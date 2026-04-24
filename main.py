@@ -4,12 +4,8 @@ from signals.sma_crossover import generate_signals
 from backtest.engine import run_backtest
 from evaluation.metrics import calculate_metrics
 from plots.visualizer import plot_results
+from config import TICKER, START, END, WINDOW
 
-# Settings
-TICKER = "NVDA"
-START = "2020-01-01"
-END = "2024-01-01"
-WINDOW = 20
 
 # Run Quantara
 df = load_data(TICKER, START, END)

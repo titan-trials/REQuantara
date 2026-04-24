@@ -31,7 +31,7 @@ REQuantara/
 
 ## Version Roadmap
 
-### Version 1 — Foundation (current)
+### Version 1 — Foundation (Completed) 
 - 1 stock: NVDA
 - 1 indicator: Simple Moving Average (SMA)
 - 1 rule: Buy when Close > SMA, Sell when Close < SMA
@@ -83,3 +83,4 @@ python main.py
 
 ---
 *Quantara is a long term project. It will grow.*
+
