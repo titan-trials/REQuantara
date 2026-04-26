@@ -43,7 +43,7 @@ REQuantara/
 - Multiple signal rules and combinations
 - Basic risk management (stop loss, position sizing)
 
-### Version 3 — Portfolio Level (Current)
+### Version 3 — Portfolio Level (Completed)
 - Bollinger Bands indicator
 - Multiple stocks simultaneously
 - Run multiple strategies simultaneously
@@ -51,7 +51,7 @@ REQuantara/
 - Strategy comparison framework
 - Sharpe Ratio metric
 
-### Version 4+ — Intelligence Layer (long term)
+### Version 4+ — Intelligence Layer (Current)
 - Parameter optimization
 - Machine learning driven signal generation
 - Autonomous strategy evaluation and adaptation
