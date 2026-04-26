@@ -53,19 +53,23 @@ STRATEGIES = [
     }
 ]
 
-def run_all_strategies(ticker, start, end, initial_capital, stop_loss, position_size):
-    results = []
+def run_all_strategies(tickers, start, end, initial_capital, stop_loss, position_size):
+    all_results = []
 
-    for strategy in STRATEGIES:
-        df = load_data(ticker, start, end)
-        df = strategy["indicators"](df)
-        df = strategy["signal"](df)
-        df = run_backtest(df, initial_capital, stop_loss, position_size)
-        metrics = get_metrics(df, initial_capital)
-        metrics["Strategy"] = strategy["name"]
-        results.append(metrics)
+    for ticker in tickers:
+        results = []
+        for strategy in STRATEGIES:
+            df = load_data(ticker, start, end)
+            df = strategy["indicators"](df)
+            df = strategy["signal"](df)
+            df = run_backtest(df, initial_capital, stop_loss, position_size)
+            metrics = get_metrics(df, initial_capital)
+            metrics["Strategy"] = strategy["name"]
+            metrics["Ticker"] = ticker
+            results.append(metrics)
+        all_results.extend(results)
 
-    results_df = pd.DataFrame(results)
-    results_df = results_df.set_index("Strategy")
+    results_df = pd.DataFrame(all_results)
+    results_df = results_df.set_index(["Ticker", "Strategy"])
     results_df = results_df.sort_values("Sharpe_Ratio", ascending=False)
     return results_df

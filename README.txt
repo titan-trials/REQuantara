@@ -45,7 +45,6 @@ REQuantara/
 
 ### Version 3 — Portfolio Level (Completed)
 - Bollinger Bands indicator
-- Multiple stocks simultaneously
 - Run multiple strategies simultaneously
 - Portfolio-level performance tracking
 - Strategy comparison framework
@@ -53,6 +52,11 @@ REQuantara/
 
 ### Version 4+ — Intelligence Layer (Current)
 - Parameter optimization
+- Multiple stocks simultaneously
+    NVDA — momentum/AI
+    TSLA — volatile momentum  
+    AAPL — stable growth
+    JPM  — cyclical/mean reverting
 - Machine learning driven signal generation
 - Autonomous strategy evaluation and adaptation
 
