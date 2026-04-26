@@ -44,9 +44,12 @@ REQuantara/
 - Basic risk management (stop loss, position sizing)
 
 ### Version 3 — Portfolio Level (Current)
+- Bollinger Bands indicator
 - Multiple stocks simultaneously
+- Run multiple strategies simultaneously
 - Portfolio-level performance tracking
 - Strategy comparison framework
+- Sharpe Ratio metric
 
 ### Version 4+ — Intelligence Layer (long term)
 - Parameter optimization
