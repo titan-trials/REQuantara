@@ -49,14 +49,14 @@ REQuantara/
 - Portfolio-level performance tracking
 - Strategy comparison framework
 - Sharpe Ratio metric
-
-### Version 4+ — Intelligence Layer (Current)
-- Parameter optimization
 - Multiple stocks simultaneously
     NVDA — momentum/AI
     TSLA — volatile momentum  
     AAPL — stable growth
     JPM  — cyclical/mean reverting
+
+### Version 4+ — Intelligence Layer (Current)
+- Parameter optimization
 - Machine learning driven signal generation
 - Autonomous strategy evaluation and adaptation
 
