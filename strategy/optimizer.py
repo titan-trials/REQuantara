@@ -82,3 +82,30 @@ def optimize_ema_crossover(ticker, start, end, initial_capital, stop_loss, posit
         "test_metrics": test_metrics,
         "all_results": pd.DataFrame(results)
     }
+
+
+def optimize_all_tickers(tickers, start, end, initial_capital, stop_loss, position_size):
+    all_summaries = []
+
+    for ticker in tickers:
+        print(f"\n{'='*40}")
+        print(f"Optimizing {ticker}...")
+        print(f"{'='*40}")
+        
+        result = optimize_ema_crossover(ticker, start, end, initial_capital, stop_loss, position_size)
+        
+        all_summaries.append({
+            "Ticker": ticker,
+            "Fast_Window": result["best_params"][0],
+            "Slow_Window": result["best_params"][1],
+            "Train_Sharpe": result["train_sharpe"],
+            "Test_Sharpe": result["test_metrics"]["Sharpe_Ratio"],
+            "Test_Return": result["test_metrics"]["Total_Return"],
+            "Test_MaxDrawdown": result["test_metrics"]["Max_Drawdown"],
+            "Overfit_Gap": round(result["train_sharpe"] - result["test_metrics"]["Sharpe_Ratio"], 3)
+        })
+
+    summary_df = pd.DataFrame(all_summaries)
+    summary_df = summary_df.set_index("Ticker")
+    summary_df = summary_df.sort_values("Test_Sharpe", ascending=False)
+    return summary_df
