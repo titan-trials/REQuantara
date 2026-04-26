@@ -17,6 +17,15 @@ def generate_crossover_signals(df, fast_window, slow_window):
     df["Position"] = df["Signal"].shift(1)
     return df
 
+# Version 2 - EMA crossover signal
+def generate_ema_crossover_signals(df, fast_window, slow_window):
+    fast_col = f"EMA_{fast_window}"
+    slow_col = f"EMA_{slow_window}"
+
+    df["Signal"] = (df[fast_col].squeeze() > df[slow_col].squeeze()).astype(int)
+    df["Position"] = df["Signal"].shift(1)
+    return df
+
 # Version 3 - Dual SMA crossover + RSI filter
 def generate_combined_signals(df, fast_window, slow_window, rsi_high=70, rsi_low=30):
     fast_col = f"SMA_{fast_window}"

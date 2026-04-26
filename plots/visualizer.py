@@ -5,17 +5,21 @@ def plot_results(df):
 
     # Top panel - cumulative returns
     ax1.plot(df["Cumulative_Market"], label="Buy & Hold", color="blue")
-    ax1.plot(df["Cumulative_Strategy"], label="SMA Strategy", color="orange")
+    ax1.plot(df["Cumulative_Strategy"], label="Strategy", color="orange")
     ax1.set_title("Quantara — Strategy vs Buy & Hold (NVDA)")
     ax1.set_ylabel("Cumulative Return")
     ax1.legend()
     ax1.grid(True)
 
-    # Middle panel - price and SMAs
+    # Middle panel - price and indicators
     ax2.plot(df["Close"].squeeze(), label="NVDA Close", color="gray", alpha=0.5)
-    ax2.plot(df["SMA_20"], label="SMA 20 (Fast)", color="green")
-    ax2.plot(df["SMA_50"], label="SMA 50 (Slow)", color="red")
-    ax2.set_title("Price vs SMAs")
+    if "EMA_20" in df.columns:
+        ax2.plot(df["EMA_20"], label="EMA 20 (Fast)", color="green")
+        ax2.plot(df["EMA_50"], label="EMA 50 (Slow)", color="red")
+    if "SMA_20" in df.columns:
+        ax2.plot(df["SMA_20"], label="SMA 20 (Fast)", color="green", linestyle="--")
+        ax2.plot(df["SMA_50"], label="SMA 50 (Slow)", color="red", linestyle="--")
+    ax2.set_title("Price vs Indicators")
     ax2.set_ylabel("Price")
     ax2.legend()
     ax2.grid(True)

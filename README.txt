@@ -38,12 +38,12 @@ REQuantara/
 - 1 backtest: Strategy vs Buy-and-Hold
 - Data source: yfinance
 
-### Version 2 — Expanding (current)
+### Version 2 — Expanding (Completed)
 - Multiple indicators (EMA, RSI, Bollinger Bands)
 - Multiple signal rules and combinations
 - Basic risk management (stop loss, position sizing)
 
-### Version 3 — Portfolio Level (planned)
+### Version 3 — Portfolio Level (Current)
 - Multiple stocks simultaneously
 - Portfolio-level performance tracking
 - Strategy comparison framework
