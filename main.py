@@ -1,5 +1,4 @@
-from strategy.runner import run_all_strategies
-from config import TICKERS, START, END, INITIAL_CAPITAL, STOP_LOSS, POSITION_SIZE
+from strategy.optimizer import optimize_ema_crossover
+from config import START, END, INITIAL_CAPITAL, STOP_LOSS, POSITION_SIZE
 
-results = run_all_strategies(TICKERS, START, END, INITIAL_CAPITAL, STOP_LOSS, POSITION_SIZE)
-print(results.to_string())
+result = optimize_ema_crossover("NVDA", START, END, INITIAL_CAPITAL, STOP_LOSS, POSITION_SIZE)
