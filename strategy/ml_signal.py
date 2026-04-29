@@ -9,6 +9,7 @@ from indicators.rsi import compute_rsi
 from indicators.bollinger import compute_bollinger_bands
 from backtest.engine import run_backtest
 from evaluation.metrics import get_metrics
+from sklearn.ensemble import RandomForestClassifier
 
 def build_features(df):
     df = compute_sma(df, 20)
@@ -20,10 +21,22 @@ def build_features(df):
     
     close = df["Close"].squeeze()
     
+    # Existing features
     df["EMA_gap"] = df["EMA_20"].squeeze() - df["EMA_50"].squeeze()
     df["BB_position"] = (close - df["Lower"].squeeze()) / (df["Upper"].squeeze() - df["Lower"].squeeze())
     df["Momentum_5"] = close.pct_change(5)
     df["Momentum_10"] = close.pct_change(10)
+    
+    # New features
+    df["Momentum_20"] = close.pct_change(20)
+    df["Momentum_30"] = close.pct_change(30)
+    df["RSI_slope"] = df["RSI"].diff(3)
+    df["Volatility_10"] = close.pct_change().rolling(10).std()
+    df["Volatility_20"] = close.pct_change().rolling(20).std()
+    df["SMA_gap"] = df["SMA_20"].squeeze() - df["SMA_50"].squeeze()
+    df["Price_vs_SMA20"] = (close - df["SMA_20"].squeeze()) / df["SMA_20"].squeeze()
+    df["Price_vs_SMA50"] = (close - df["SMA_50"].squeeze()) / df["SMA_50"].squeeze()
+    df["BB_width"] = (df["Upper"].squeeze() - df["Lower"].squeeze()) / df["BB_SMA"].squeeze()
     
     return df
 
@@ -38,7 +51,12 @@ def run_ml_strategy(ticker, start, end, initial_capital, stop_loss, position_siz
     df = build_target(df)
     df = df.dropna()
     
-    feature_cols = ["EMA_gap", "RSI", "BB_position", "Momentum_5", "Momentum_10"]
+    feature_cols = [
+    "EMA_gap", "RSI", "BB_position", "Momentum_5", "Momentum_10",
+    "Momentum_20", "Momentum_30", "RSI_slope", "Volatility_10",
+    "Volatility_20", "SMA_gap", "Price_vs_SMA20", "Price_vs_SMA50",
+    "BB_width"
+]
     
     X = df[feature_cols]
     y = df["Target"]
@@ -77,15 +95,18 @@ def run_ml_strategy(ticker, start, end, initial_capital, stop_loss, position_siz
     
     return df_test, metrics, model, feature_cols, scaler
 
-from sklearn.ensemble import RandomForestClassifier
-
 def run_rf_strategy(ticker, start, end, initial_capital, stop_loss, position_size):
     df = load_data(ticker, start, end)
     df = build_features(df)
     df = build_target(df)
     df = df.dropna()
     
-    feature_cols = ["EMA_gap", "RSI", "BB_position", "Momentum_5", "Momentum_10"]
+    feature_cols = [
+    "EMA_gap", "RSI", "BB_position", "Momentum_5", "Momentum_10",
+    "Momentum_20", "Momentum_30", "RSI_slope", "Volatility_10",
+    "Volatility_20", "SMA_gap", "Price_vs_SMA20", "Price_vs_SMA50",
+    "BB_width"
+]
     
     X = df[feature_cols]
     y = df["Target"]

@@ -1,8 +1,8 @@
 # Quantara Configuration
 # Change settings here to run different backtests
 
-TICKERS = ["NVDA", "TSLA", "AAPL", "JPM", "SMR"]
-START = "2020-01-01"
+TICKERS = ["NVDA", "TSLA", "AAPL", "JPM", "IBM"]
+START = "2015-01-01"
 END = "2024-01-01"
 FAST_WINDOW = 20
 SLOW_WINDOW = 50
