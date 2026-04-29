@@ -4,7 +4,7 @@
 # Options: "compare", "optimize", "ml"
 # ============================================================
 
-MODE = "ml"
+MODE = "rf"
 
 # Config
 from config import TICKERS, START, END, INITIAL_CAPITAL, STOP_LOSS, POSITION_SIZE
@@ -12,7 +12,7 @@ from config import TICKERS, START, END, INITIAL_CAPITAL, STOP_LOSS, POSITION_SIZ
 # Strategy
 from strategy.runner import run_all_strategies
 from strategy.optimizer import optimize_all_tickers
-from strategy.ml_signal import run_ml_strategy
+from strategy.ml_signal import run_ml_strategy, run_rf_strategy
 
 # Evaluation
 from evaluation.exporter import export_results
@@ -30,3 +30,7 @@ elif MODE == "optimize":
 elif MODE == "ml":
     for ticker in TICKERS:
         run_ml_strategy(ticker, START, END, INITIAL_CAPITAL, STOP_LOSS, POSITION_SIZE)
+
+elif MODE == "rf":
+    for ticker in TICKERS:
+        run_rf_strategy(ticker, START, END, INITIAL_CAPITAL, STOP_LOSS, POSITION_SIZE)

@@ -76,3 +76,46 @@ def run_ml_strategy(ticker, start, end, initial_capital, stop_loss, position_siz
     print(coefficients.sort_values(ascending=False))
     
     return df_test, metrics, model, feature_cols, scaler
+
+from sklearn.ensemble import RandomForestClassifier
+
+def run_rf_strategy(ticker, start, end, initial_capital, stop_loss, position_size):
+    df = load_data(ticker, start, end)
+    df = build_features(df)
+    df = build_target(df)
+    df = df.dropna()
+    
+    feature_cols = ["EMA_gap", "RSI", "BB_position", "Momentum_5", "Momentum_10"]
+    
+    X = df[feature_cols]
+    y = df["Target"]
+    
+    midpoint = len(df) // 2
+    
+    X_train = X.iloc[:midpoint]
+    X_test = X.iloc[midpoint:]
+    y_train = y.iloc[:midpoint]
+    
+    model = RandomForestClassifier(n_estimators=100, random_state=42)
+    model.fit(X_train, y_train)
+    
+    test_signals = model.predict(X_test)
+    
+    df_test = df.iloc[midpoint:].copy()
+    df_test["Signal"] = test_signals
+    df_test["Position"] = df_test["Signal"].shift(1)
+    
+    df_test = run_backtest(df_test, initial_capital, stop_loss, position_size)
+    metrics = get_metrics(df_test, initial_capital)
+    
+    importances = pd.Series(model.feature_importances_, index=feature_cols)
+    
+    print(f"\n--- RANDOM FOREST RESULTS: {ticker} ---")
+    print(f"Test Total Return  : {metrics['Total_Return']}%")
+    print(f"Test Sharpe        : {metrics['Sharpe_Ratio']}")
+    print(f"Test Win Rate      : {metrics['Win_Rate']}%")
+    print(f"Test Max Drawdown  : {metrics['Max_Drawdown']}%")
+    print(f"\nFeature Importances:")
+    print(importances.sort_values(ascending=False))
+    
+    return df_test, metrics, model, feature_cols
