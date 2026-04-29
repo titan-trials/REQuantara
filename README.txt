@@ -9,7 +9,7 @@ constructed, tested, and evaluated  one component at a time.
 ## Philosophy
 **Understanding over performance.**
 Every component is built to be fully understood before moving on. No black boxes.
-No copying and pasting strategies that "work" without knowing why.
+All strategies must be explained 
 
 ## Architecture
 REQuantara/
@@ -84,9 +84,7 @@ python main.py
 ```
 
 ## Dependencies
-- Python 3.13+
-- yfinance
-- pandas
+Check requirements.txt
 
 ---
 *Quantara is a long term project. It will grow.*
