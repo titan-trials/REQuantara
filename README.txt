@@ -61,12 +61,20 @@ REQuantara/
 - Overfit gap measurement
 - Excel export for all results
 
-### Version 5 — Machine Learning (Current)
+### Version 5 — Machine Learning (Complete)
 - Logistic Regression signal generation
-- Feature engineering from existing indicators
+- Random Forest signal generation  
+- Feature engineering (14 features)
 - Walk forward train/test split
-- NVDA baseline: Sharpe 0.682
-- Next: Random Forest, Neural Network
+- Extended date range to 2015 for more training data
+- Key finding: RF dominates stable stocks, LR dominates volatile ones
+- NN deferred — insufficient daily data to outperform simpler models
+
+### Version 6 — Autonomous Evaluation (Current)
+- Strategy selection per ticker based on historical performance
+- Automated best model picker
+- Self updating performance tracking
+- Foundation for live trading readiness
 
 ## Setup Instructions
 
