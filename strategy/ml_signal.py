@@ -70,5 +70,9 @@ def run_ml_strategy(ticker, start, end, initial_capital, stop_loss, position_siz
     print(f"Test Sharpe        : {metrics['Sharpe_Ratio']}")
     print(f"Test Win Rate      : {metrics['Win_Rate']}%")
     print(f"Test Max Drawdown  : {metrics['Max_Drawdown']}%")
+
+    coefficients = pd.Series(model.coef_[0], index=feature_cols)
+    print("\nModel Feature Weights:")
+    print(coefficients.sort_values(ascending=False))
     
     return df_test, metrics, model, feature_cols, scaler
