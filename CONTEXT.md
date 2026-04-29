@@ -13,11 +13,19 @@ Philosophy: understanding over performance. Every component is built to be
 fully understood before moving on. No black boxes.
 
 ## Current State
-- Version 1, 2, 3 complete. Version 4 in progress.
-- All code is on GitHub: https://github.com/titan-trials/REQuantara
-- Local path: C:\Users\logic\OneDrive\Desktop\REQuantara
-- Python 3.13, virtual environment at venv/
-- Activate with: .\venv\Scripts\Activate.ps1
+- Versions 1-4 complete. Version 5 in progress.
+
+## ML Results So Far
+- NVDA Logistic Regression Test Sharpe: 0.682
+- Key finding: RSI positive weight, everything else negative
+- Model learns NVDA continues when momentum builds, 
+  pulls back when overextended
+
+## What To Build Next
+1. Extend ML to all tickers
+2. Add Random Forest model
+3. Compare ML vs rule based strategies formally
+4. Begin Neural Network exploration
 
 ## Project Architecture
 REQuantara/

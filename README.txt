@@ -55,10 +55,18 @@ REQuantara/
     AAPL — stable growth
     JPM  — cyclical/mean reverting
 
-### Version 4+ — Intelligence Layer (Current)
-- Parameter optimization
-- Machine learning driven signal generation
-- Autonomous strategy evaluation and adaptation
+### Version 4 — Intelligence Layer (Complete)
+- Parameter optimization with walk forward testing
+- Grid search across all tickers
+- Overfit gap measurement
+- Excel export for all results
+
+### Version 5 — Machine Learning (Current)
+- Logistic Regression signal generation
+- Feature engineering from existing indicators
+- Walk forward train/test split
+- NVDA baseline: Sharpe 0.682
+- Next: Random Forest, Neural Network
 
 ## Setup Instructions
 
