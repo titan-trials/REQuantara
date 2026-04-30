@@ -1,10 +1,10 @@
 # ============================================================
 # Quantara - Main Entry Point
 # Set MODE to control what runs
-# Options: "compare", "optimize", "ml", "rf", "auto"
+# Options: "compare", "optimize", "ml", "rf", "auto", "paper"
 # ============================================================
 
-MODE = "auto"
+MODE = "paper"
 
 # Config
 from config import TICKERS, START, END, INITIAL_CAPITAL, STOP_LOSS, POSITION_SIZE
@@ -41,3 +41,9 @@ elif MODE == "auto":
     print("\n--- QUANTARA AUTO SELECTION ---")
     print(selections.to_string())
     export_results(selections, "auto_selection")
+
+elif MODE == "paper":
+    from strategy.paper_trader import run_paper_trader
+    signals = run_paper_trader(TICKERS, START, END, INITIAL_CAPITAL, STOP_LOSS, POSITION_SIZE)
+    print("\n--- TODAY'S SIGNALS ---")
+    print(signals.to_string())

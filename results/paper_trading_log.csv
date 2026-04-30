@@ -1,0 +1,6 @@
+Ticker,Strategy,Signal,Price,Action,Timestamp
+NVDA,EMA Crossover,1,213.17,BUY,2026-04-29 18:39:20
+TSLA,Logistic Regression,1,376.02,BUY,2026-04-29 18:39:20
+AAPL,EMA Crossover,1,270.71,BUY,2026-04-29 18:39:20
+JPM,SMA Crossover,1,311.45,BUY,2026-04-29 18:39:20
+IBM,Random Forest,1,233.04,BUY,2026-04-29 18:39:20
