@@ -1,10 +1,10 @@
 # ============================================================
 # Quantara - Main Entry Point
 # Set MODE to control what runs
-# Options: "compare", "optimize", "ml"
+# Options: "compare", "optimize", "ml", "rf", "auto"
 # ============================================================
 
-MODE = "rf"
+MODE = "auto"
 
 # Config
 from config import TICKERS, START, END, INITIAL_CAPITAL, STOP_LOSS, POSITION_SIZE
@@ -13,6 +13,7 @@ from config import TICKERS, START, END, INITIAL_CAPITAL, STOP_LOSS, POSITION_SIZ
 from strategy.runner import run_all_strategies
 from strategy.optimizer import optimize_all_tickers
 from strategy.ml_signal import run_ml_strategy, run_rf_strategy
+from strategy.auto_selector import auto_select
 
 # Evaluation
 from evaluation.exporter import export_results
@@ -34,3 +35,9 @@ elif MODE == "ml":
 elif MODE == "rf":
     for ticker in TICKERS:
         run_rf_strategy(ticker, START, END, INITIAL_CAPITAL, STOP_LOSS, POSITION_SIZE)
+
+elif MODE == "auto":
+    selections = auto_select(TICKERS, START, END, INITIAL_CAPITAL, STOP_LOSS, POSITION_SIZE)
+    print("\n--- QUANTARA AUTO SELECTION ---")
+    print(selections.to_string())
+    export_results(selections, "auto_selection")
