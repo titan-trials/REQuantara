@@ -13,7 +13,39 @@ Philosophy: understanding over performance. Every component is built to be
 fully understood before moving on. No black boxes.
 
 ## Current State
-- Versions 1-4 complete. Version 5 in progress.
+- Versions 1-6 complete. Version 7 planned.
+- All code on GitHub: https://github.com/titan-trials/REQuantara
+
+## Auto Selection Results
+| Ticker | Best Strategy | Score | Sharpe | Return | MaxDD |
+|--------|--------------|-------|--------|--------|-------|
+| TSLA | Logistic Regression | 1.1713 | 1.018 | 236.07% | -36.60% |
+| NVDA | EMA Crossover | 1.1044 | 1.062 | 191.86% | -36.77% |
+| IBM | Random Forest | 1.0240 | 1.243 | 65.71% | -9.65% |
+| AAPL | EMA Crossover | 0.8541 | 0.917 | 67.43% | -13.09% |
+| JPM | SMA Crossover | 0.7898 | 0.874 | 45.92% | -13.03% |
+
+## Key Findings Across All Versions
+- EMA Crossover dominates momentum stocks (NVDA, AAPL)
+- LR dominates highly volatile stocks (TSLA)
+- RF dominates stable data rich stocks (IBM)
+- Rule based beats ML when data is limited
+- Composite scoring captures return AND safety simultaneously
+- RSI filter too restrictive on momentum stocks
+- Bollinger Bands work better on mean reverting assets
+
+## Composite Score Formula
+Score = (Sharpe × 0.5) + ((1 - abs(MaxDrawdown/100)) × 0.3) + (TotalReturn/100 × 0.2)
+- Above 1.0 = genuinely good strategy
+- 0.5 to 1.0 = acceptable
+- Below 0.5 = failing
+
+## What To Build Next (Version 7)
+- Paper trading simulation
+- Real time data integration  
+- Strategy retraining schedule
+- Performance monitoring dashboard
+- Live signal generation using auto selected strategies
 
 ## ML Results So Far
 - NVDA Logistic Regression Test Sharpe: 0.682
@@ -114,9 +146,9 @@ AAPL    Bollinger Bands       5.25%  0.288     -4.14%
 ### Version 1 Done - Single stock, SMA, basic backtest
 ### Version 2 Done - EMA, RSI, Bollinger, risk management
 ### Version 3 Done - Multi-strategy, multi-stock, Sharpe ranking
-### Version 4 (current) - Parameter optimization, walk forward testing
-### Version 5 (planned) - Machine learning signal generation
-### Version 6 (planned) - Autonomous strategy evaluation
+### Version 4 Done - Parameter optimization, walk forward testing
+### Version 5 Done - Machine learning signal generation
+### Version 6 Done - Autonomous strategy evaluation
 
 ## Known Issues / Technical Debt
 - yfinance returns multi-level columns, fixed with df.columns.get_level_values(0)

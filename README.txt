@@ -70,11 +70,22 @@ REQuantara/
 - Key finding: RF dominates stable stocks, LR dominates volatile ones
 - NN deferred — insufficient daily data to outperform simpler models
 
-### Version 6 — Autonomous Evaluation (Current)
-- Strategy selection per ticker based on historical performance
-- Automated best model picker
-- Self updating performance tracking
-- Foundation for live trading readiness
+### Version 6 — Autonomous Evaluation (Complete)
+- Composite scoring system (Sharpe 50%, Drawdown 30%, Return 20%)
+- Auto selector runs all strategies per ticker
+- Picks best strategy autonomously per ticker
+- Final selections:
+    NVDA → EMA Crossover (Score: 1.1044)
+    TSLA → Logistic Regression (Score: 1.1713)
+    AAPL → EMA Crossover (Score: 0.8541)
+    JPM  → SMA Crossover (Score: 0.7898)
+    IBM  → Random Forest (Score: 1.0240)
+
+### Version 7 — Live Trading Readiness (Planned)
+- Paper trading simulation
+- Real time data integration
+- Strategy retraining schedule
+- Performance monitoring dashboard
 
 ## Setup Instructions
 

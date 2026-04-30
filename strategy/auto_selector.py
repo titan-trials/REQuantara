@@ -16,6 +16,7 @@ def compute_composite_score(metrics):
     total_return = metrics["Total_Return"] / 100
 
     # Please Note score is on a scale roughly 0 to 2, with higher being better
+    # Sharpe contributes 50%, Drawdown contributes 30%, Total Return contributes(Raw Return) 20%
     score = (sharpe * 0.5) + ((1 - drawdown) * 0.3) + (total_return * 0.2)
     return round(score, 4)
 
