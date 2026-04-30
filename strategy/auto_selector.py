@@ -15,6 +15,7 @@ def compute_composite_score(metrics):
     drawdown = abs(metrics["Max_Drawdown"]) / 100
     total_return = metrics["Total_Return"] / 100
 
+    # Please Note score is on a scale roughly 0 to 2, with higher being better
     score = (sharpe * 0.5) + ((1 - drawdown) * 0.3) + (total_return * 0.2)
     return round(score, 4)
 
