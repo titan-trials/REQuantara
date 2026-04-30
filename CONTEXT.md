@@ -13,8 +13,18 @@ Philosophy: understanding over performance. Every component is built to be
 fully understood before moving on. No black boxes.
 
 ## Current State
-- Versions 1-6 complete. Version 7 planned.
-- All code on GitHub: https://github.com/titan-trials/REQuantara
+- Versions 1-7 complete. 
+- Paper trader live and logging signals.
+- Next session: check signal outcomes, review codebase
+
+## Paper Trading - First Signals (2026-04-29)
+| Ticker | Strategy | Price | Signal |
+|--------|----------|-------|--------|
+| NVDA | EMA Crossover | $213.17 | BUY |
+| TSLA | Logistic Regression | $376.02 | BUY |
+| AAPL | EMA Crossover | $270.71 | BUY |
+| JPM | SMA Crossover | $311.45 | BUY |
+| IBM | Random Forest | $233.04 | BUY |
 
 ## Auto Selection Results
 | Ticker | Best Strategy | Score | Sharpe | Return | MaxDD |
@@ -41,11 +51,16 @@ Score = (Sharpe × 0.5) + ((1 - abs(MaxDrawdown/100)) × 0.3) + (TotalReturn/100
 - Below 0.5 = failing
 
 ## What To Build Next (Version 7)
-- Paper trading simulation
 - Real time data integration  
 - Strategy retraining schedule
 - Performance monitoring dashboard
 - Live signal generation using auto selected strategies
+
+## What To Do Next Session
+1. Run paper trader again - check if signals changed
+2. Compare prices to yesterday to validate BUY calls
+3. Full codebase review before adding anything new
+4. Scheduler and dashboard are Version 8
 
 ## ML Results So Far
 - NVDA Logistic Regression Test Sharpe: 0.682
