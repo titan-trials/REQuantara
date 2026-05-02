@@ -2,19 +2,22 @@ name: Quantara Paper Trader
 
 on:
   schedule:
-    - cron: '0 21 * * 1-5'  # 4PM EST = 9PM UTC, weekdays only
-  workflow_dispatch:  # allows manual trigger from GitHub
+    - cron: '0 21 * * 1-5'
+  workflow_dispatch:
 
 jobs:
   run-paper-trader:
     runs-on: ubuntu-latest
     
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.13'
 
