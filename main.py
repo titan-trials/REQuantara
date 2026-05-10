@@ -4,7 +4,7 @@
 # Options: "compare", "optimize", "ml", "rf", "auto", "paper"
 # ============================================================
 
-MODE = "paper"
+MODE = "diagnostic"  
 
 # Config
 from config import TICKERS, START, END, INITIAL_CAPITAL, STOP_LOSS, POSITION_SIZE
@@ -14,9 +14,14 @@ from strategy.runner import run_all_strategies
 from strategy.optimizer import optimize_all_tickers
 from strategy.ml_signal import run_ml_strategy, run_rf_strategy
 from strategy.auto_selector import auto_select
+from strategy.paper_trader import run_paper_trader
 
 # Evaluation
 from evaluation.exporter import export_results
+
+# Visualization
+from plots.visualizer import plot_diagnostic
+
 
 if MODE == "compare":
     results = run_all_strategies(TICKERS, START, END, INITIAL_CAPITAL, STOP_LOSS, POSITION_SIZE)
@@ -43,7 +48,9 @@ elif MODE == "auto":
     export_results(selections, "auto_selection")
 
 elif MODE == "paper":
-    from strategy.paper_trader import run_paper_trader
     signals = run_paper_trader(TICKERS, START, END, INITIAL_CAPITAL, STOP_LOSS, POSITION_SIZE)
     print("\n--- TODAY'S SIGNALS ---")
     print(signals.to_string())
+
+elif MODE == "diagnostic":
+    plot_diagnostic("TSLA", INITIAL_CAPITAL, STOP_LOSS, POSITION_SIZE)

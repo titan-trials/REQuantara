@@ -260,3 +260,8 @@ Local: C:\Users\logic\OneDrive\Desktop\REQuantara
 - matplotlib — visualization
 - scikit-learn — ML models
 - openpyxl — Excel export
+
+## Notes from Plot Diagnostics
+- TSLA is having issues relating to momentum. Examined from Apr. 29, - May 8th /2026
+  - model keeps misreading momentum as overextension rather than sustained momentum
+  - Might be worth adding a spefific momentum checker that is forcibly weighed more due to how momentum heavy TSLA is
