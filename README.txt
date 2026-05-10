@@ -13,22 +13,44 @@ All strategies must be explained
 
 ## Architecture
 REQuantara/
-│
+├── .github/
+│   └── workflows/
+│       └── paper_trader.yml   # GitHub Actions scheduler - runs daily 2PM PST
 ├── data/
-│   └── loader.py            # Downloads and cleans price data
+│   └── loader.py              # yfinance data fetching, cleans multi-level columns
 ├── indicators/
-│   └── moving_average.py    # SMA and future indicator calculations
+│   ├── moving_average.py      # compute_sma(df, window)
+│   ├── ema.py                 # compute_ema(df, window)
+│   ├── rsi.py                 # compute_rsi(df, window=14)
+│   └── bollinger.py           # compute_bollinger_bands(df, window=20, num_std=2)
 ├── signals/
-│   └── sma_crossover.py     # Buy/sell rule logic
+│   ├── sma_crossover.py       # generate_signals, generate_crossover_signals,
+│   │                          # generate_ema_crossover_signals, generate_combined_signals
+│   └── bollinger_signal.py    # generate_bollinger_signals
 ├── backtest/
-│   └── engine.py            # Simulates trades, tracks cash and P&L
+│   └── engine.py              # run_backtest(df, initial_capital, stop_loss, position_size)
 ├── evaluation/
-│   └── metrics.py           # Return, drawdown, win rate etc.
+│   ├── metrics.py             # calculate_metrics (prints), get_metrics (returns dict)
+│   └── exporter.py            # export_results, export_optimization - saves to Excel
 ├── plots/
-│   └── visualizer.py        # All chart and plot logic
-├── main.py                  # Ties everything together, runs the sim
-└── requirements.txt         # Project dependencies
+│   └── visualizer.py          # plot_results(df) - 3 panel chart (returns, price, RSI)
+├── strategy/
+│   ├── runner.py              # run_all_strategies(tickers) - multi stock/strategy grid
+│   ├── optimizer.py           # optimize_ema_crossover, optimize_all_tickers
+│   ├── ml_signal.py           # run_ml_strategy (LR), run_rf_strategy (RF)
+│   │                          # build_features (14 features), build_target
+│   ├── auto_selector.py       # auto_select - picks best strategy per ticker
+│   │                          # compute_composite_score, evaluate_rule_based, evaluate_ml
+│   └── paper_trader.py        # run_paper_trader - live signals on current data
+│                              # get_recent_data, generate_current_signal, log_signals
+├── results/                   # Excel exports and paper trading log
+│   └── paper_trading_log.csv  # auto updated by GitHub Actions
+├── config.py                  # all settings
+├── main.py                    # entry point with MODE switch
+├── run_paper_trader.py        # standalone script for GitHub Actions
+└── CONTEXT.md                 # this file
 
+--
 ## Version Roadmap
 
 ### Version 1 — Foundation (Completed) 
