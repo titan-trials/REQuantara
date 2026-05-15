@@ -56,7 +56,7 @@ TICKER_COLORS = {
 def load_log():
     df = pd.read_csv("results/paper_trading_log.csv")
     df.columns = df.columns.str.strip()
-    df["Timestamp"] = pd.to_datetime(df["Timestamp"])
+    df["Timestamp"] = pd.to_datetime(df["Timestamp"], format="mixed")
     df["Date"] = df["Timestamp"].dt.date
     df["Signal"] = df["Signal"].astype(int)
     df["Price"] = pd.to_numeric(df["Price"], errors="coerce")
