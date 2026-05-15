@@ -19,10 +19,23 @@ live paper trading via automated GitHub Actions scheduler.
 ---
 
 ## Current State
-- Versions 1-7 complete
+- Versions 1-8 complete
 - Paper trader live and logging signals automatically via GitHub Actions
 - Scheduler runs daily at 9PM UTC (2PM PDT) on weekdays
-- Next: Version 8 — performance dashboard and codebase cleanup
+- Next: Version 9 — performance analtics 
+  - Version 9 — Performance Analytics
+    - P&L Tracking
+      - Starting from Apr 29 entry prices, calculate actual dollar gain/loss per ticker assuming $10,000 split equally ($2,000 per ticker). Shows realized and unrealized P&L updated daily as new signals come in.
+    - Win/Loss Analysis
+      - Every time a signal flips from BUY to SELL — that's a completed trade. Track each one: entry price, exit price, duration held, profit or loss. Win rate, average win size, average loss size.
+    - Biggest Winners/Losers
+      - Leaderboard showing which ticker/strategy combination is performing best and worst in live paper trading. Not backtest numbers — actual live signal performance since Apr 29.
+    - Drawdown Tracker
+      - Real time max drawdown per ticker from peak paper trading value. Shows which positions are most underwater right now.
+    - Signal Quality Score
+      - For each ticker — when the model said BUY, what percentage of the time was the next day actually up? Live accuracy tracking separate from backtest accuracy.
+    - Problem Detection
+      - Flags automatically when something looks wrong — strategy switching too frequently (IBM issue), position stuck in loss beyond stop loss threshold, model accuracy dropping below baseline.
 
 ---
 
@@ -81,6 +94,12 @@ REQuantara/
 └── CONTEXT.md                 # this file
 
 ---
+
+## Dashboard
+Live: https://requantara-hyxcljhintrmhpvv7hjnwq.streamlit.app/
+Built with Streamlit Community Cloud
+Auto-updates when GitHub Actions commits new paper trading data
+Note: May go private — redeploy needed if visibility changes
 
 ## Config Settings
 ```python
