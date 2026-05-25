@@ -95,7 +95,7 @@ REQuantara/
 ---
 
 ## Dashboard
-Live: https://requantara-hyxcljhintrmhpvv7hjnwq.streamlit.app/
+Live: https://requantara-e4epzjkmfgtgb9almgh3le.streamlit.app
 Built with Streamlit Community Cloud
 Auto-updates when GitHub Actions commits new paper trading data
 Style: Bloomberg meets modern fintech — dark navy, Inter font, JetBrains Mono for data
