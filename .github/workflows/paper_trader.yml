@@ -36,7 +36,7 @@ jobs:
         run: |
           git config --local user.email "quantara@automated.com"
           git config --local user.name "Quantara Bot"
-          git pull --rebase origin master
           git add results/
           git diff --staged --quiet || git commit -m "Auto: paper trading signals $(date +'%Y-%m-%d')"
+          git pull --rebase origin master
           git push
