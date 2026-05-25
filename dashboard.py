@@ -173,7 +173,7 @@ def load_log():
     df.columns = df.columns.str.strip()
     df["Timestamp"] = pd.to_datetime(df["Timestamp"], format="mixed")
     df["Date"] = df["Timestamp"].dt.date
-    df["Signal"] = df["Signal"].astype(int)
+    df["Signal"] = pd.to_numeric(df["Signal"], errors="coerce").fillna(0).astype(int)
     df["Price"] = pd.to_numeric(df["Price"], errors="coerce")
     return df.sort_values("Timestamp")
 
