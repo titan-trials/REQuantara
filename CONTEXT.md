@@ -1,4 +1,6 @@
 # Quantara — Project Context Document
+*Paste this into a new chat to restore full project context*
+
 ---
 
 ## Who I Am
@@ -13,29 +15,18 @@ Philosophy: understanding over performance. No black boxes.
 ## What Quantara Is
 A Python-based quantitative trading strategy simulator built from scratch.
 Started with one stock, one indicator, one rule. Now runs autonomous
-multi-strategy, multi-stock analysis with ML signal generation and
-live paper trading via automated GitHub Actions scheduler.
+multi-strategy, multi-stock analysis with ML signal generation, live paper
+trading via GitHub Actions, and real order execution via Alpaca paper trading.
 
 ---
 
 ## Current State
-- Versions 1-8 complete
-- Paper trader live and logging signals automatically via GitHub Actions
+- Versions 1-8 complete. Version 9 planned.
+- Paper trader live, logging signals, and executing Alpaca orders automatically
 - Scheduler runs daily at 9PM UTC (2PM PDT) on weekdays
-- Next: Version 9 — performance analtics 
-  - Version 9 — Performance Analytics
-    - P&L Tracking
-      - Starting from Apr 29 entry prices, calculate actual dollar gain/loss per ticker assuming $10,000 split equally ($2,000 per ticker). Shows realized and unrealized P&L updated daily as new signals come in.
-    - Win/Loss Analysis
-      - Every time a signal flips from BUY to SELL — that's a completed trade. Track each one: entry price, exit price, duration held, profit or loss. Win rate, average win size, average loss size.
-    - Biggest Winners/Losers
-      - Leaderboard showing which ticker/strategy combination is performing best and worst in live paper trading. Not backtest numbers — actual live signal performance since Apr 29.
-    - Drawdown Tracker
-      - Real time max drawdown per ticker from peak paper trading value. Shows which positions are most underwater right now.
-    - Signal Quality Score
-      - For each ticker — when the model said BUY, what percentage of the time was the next day actually up? Live accuracy tracking separate from backtest accuracy.
-    - Problem Detection
-      - Flags automatically when something looks wrong — strategy switching too frequently (IBM issue), position stuck in loss beyond stop loss threshold, model accuracy dropping below baseline.
+- Alpaca paper trading account: $10,000
+- First orders placed May 24, 2026 — NVDA, AAPL, JPM (pending fill at Monday open)
+- TSLA and IBM on SELL/HOLD — no positions opened
 
 ---
 
@@ -45,11 +36,15 @@ live paper trading via automated GitHub Actions scheduler.
 .\venv\Scripts\Activate.ps1
 
 # Run modes by changing MODE in main.py
-# Options: "compare", "optimize", "ml", "rf", "auto", "paper"
+# Options: "compare", "optimize", "ml", "rf", "auto", "paper", "diagnostic"
 python main.py
 
-# Run automated paper trader directly
+# Run automated paper trader directly (also executes Alpaca orders)
 python run_paper_trader.py
+
+# Set env vars for local Alpaca testing
+$env:ALPACA_KEY="your_key"
+$env:ALPACA_SECRET="your_secret"
 ```
 
 ---
@@ -58,40 +53,44 @@ python run_paper_trader.py
 REQuantara/
 ├── .github/
 │   └── workflows/
-│       └── paper_trader.yml   # GitHub Actions scheduler - runs daily 9PM UTC
+│       └── paper_trader.yml      # GitHub Actions - runs daily 9PM UTC
 ├── data/
-│   └── loader.py              # yfinance data fetching, cleans multi-level columns
+│   └── loader.py                 # yfinance data fetching, cleans multi-level columns
 ├── indicators/
-│   ├── moving_average.py      # compute_sma(df, window)
-│   ├── ema.py                 # compute_ema(df, window)
-│   ├── rsi.py                 # compute_rsi(df, window=14)
-│   └── bollinger.py           # compute_bollinger_bands(df, window=20, num_std=2)
+│   ├── moving_average.py         # compute_sma(df, window)
+│   ├── ema.py                    # compute_ema(df, window)
+│   ├── rsi.py                    # compute_rsi(df, window=14)
+│   └── bollinger.py              # compute_bollinger_bands(df, window=20, num_std=2)
 ├── signals/
-│   ├── sma_crossover.py       # generate_signals, generate_crossover_signals,
-│   │                          # generate_ema_crossover_signals, generate_combined_signals
-│   └── bollinger_signal.py    # generate_bollinger_signals
+│   ├── sma_crossover.py          # generate_signals, generate_crossover_signals,
+│   │                             # generate_ema_crossover_signals, generate_combined_signals
+│   └── bollinger_signal.py       # generate_bollinger_signals
 ├── backtest/
-│   └── engine.py              # run_backtest(df, initial_capital, stop_loss, position_size)
+│   └── engine.py                 # run_backtest(df, initial_capital, stop_loss, position_size)
 ├── evaluation/
-│   ├── metrics.py             # calculate_metrics (prints), get_metrics (returns dict)
-│   └── exporter.py            # export_results, export_optimization - saves to Excel
+│   ├── metrics.py                # calculate_metrics (prints), get_metrics (returns dict)
+│   └── exporter.py               # export_results, export_optimization - saves to Excel
 ├── plots/
-│   └── visualizer.py          # plot_results(df) - 3 panel chart (returns, price, RSI)
+│   └── visualizer.py             # plot_results(df) - 3 panel chart
+│                                 # plot_diagnostic(ticker) - LR diagnostic chart
 ├── strategy/
-│   ├── runner.py              # run_all_strategies(tickers) - multi stock/strategy grid
-│   ├── optimizer.py           # optimize_ema_crossover, optimize_all_tickers
-│   ├── ml_signal.py           # run_ml_strategy (LR), run_rf_strategy (RF)
-│   │                          # build_features (14 features), build_target
-│   ├── auto_selector.py       # auto_select - picks best strategy per ticker
-│   │                          # compute_composite_score, evaluate_rule_based, evaluate_ml
-│   └── paper_trader.py        # run_paper_trader - live signals on current data
-│                              # get_recent_data, generate_current_signal, log_signals
-├── results/                   # Excel exports and paper trading log
-│   └── paper_trading_log.csv  # auto updated by GitHub Actions
-├── config.py                  # all settings
-├── main.py                    # entry point with MODE switch
-├── run_paper_trader.py        # standalone script for GitHub Actions
-└── CONTEXT.md                 # this file
+│   ├── runner.py                 # run_all_strategies(tickers) - multi stock/strategy grid
+│   ├── optimizer.py              # optimize_ema_crossover, optimize_all_tickers
+│   ├── ml_signal.py              # run_ml_strategy (LR), run_rf_strategy (RF)
+│   │                             # build_features (14 features), build_target
+│   ├── auto_selector.py          # auto_select - picks best strategy per ticker
+│   │                             # compute_composite_score, evaluate_rule_based, evaluate_ml
+│   ├── paper_trader.py           # run_paper_trader - live signals + Alpaca execution
+│   │                             # get_recent_data, generate_current_signal, log_signals
+│   └── alpaca_executor.py        # get_client, execute_signal, get_pending_orders
+│                                 # handles BUY/SELL with position + pending order checks
+├── results/
+│   └── paper_trading_log.csv     # auto updated by GitHub Actions daily
+├── config.py                     # all settings + Alpaca credentials via os.getenv
+├── main.py                       # entry point with MODE switch
+├── dashboard.py                  # Streamlit dashboard - Bloomberg institutional style
+├── run_paper_trader.py           # standalone script for GitHub Actions
+└── CONTEXT.md                    # this file
 
 ---
 
@@ -99,7 +98,10 @@ REQuantara/
 Live: https://requantara-hyxcljhintrmhpvv7hjnwq.streamlit.app/
 Built with Streamlit Community Cloud
 Auto-updates when GitHub Actions commits new paper trading data
-Note: May go private — redeploy needed if visibility changes
+Style: Bloomberg meets modern fintech — dark navy, Inter font, JetBrains Mono for data
+Note: Repo currently public for Streamlit — may go private later
+
+---
 
 ## Config Settings
 ```python
@@ -113,7 +115,23 @@ EMA_SLOW = 50
 STOP_LOSS = 0.05
 POSITION_SIZE = 0.50
 INITIAL_CAPITAL = 10000
+
+# Alpaca (loaded from environment variables)
+ALPACA_KEY = os.getenv("ALPACA_KEY")
+ALPACA_SECRET = os.getenv("ALPACA_SECRET")
+ALPACA_BASE_URL = "https://paper-api.alpaca.markets"
 ```
+
+---
+
+## Alpaca Integration
+- Paper trading account: $10,000
+- SDK: alpaca-py
+- Execution: MarketOrderRequest, TimeInForce.DAY
+- Position sizing: 50% of portfolio per ticker
+- Position check: skips BUY if position OR pending order exists (duplicate fix)
+- Secrets stored in GitHub Actions secrets (ALPACA_KEY, ALPACA_SECRET)
+- Local testing: set via $env: in PowerShell
 
 ---
 
@@ -166,6 +184,7 @@ IBM     0.680       0.887       RF
 JPM     0.043       0.405       RF
 Key finding: RF dominates stable data rich stocks, LR dominates volatile ones.
 NN deferred — insufficient daily data (~625 training days) to outperform simpler models.
+NN viable in Quantara NN project (minute data, 50k-120k samples per ticker).
 
 ---
 
@@ -195,22 +214,27 @@ Score = (Sharpe × 0.5) + ((1 - abs(MaxDrawdown/100)) × 0.3) + (TotalReturn/100
 
 ---
 
-## Paper Trading Log
+## Paper Trading Performance (Apr 29 — May 22, 2026)
+Ticker  Entry     May 22    Return   Signal      P&L ($2k)
+NVDA    $213.17   $219.51   +3.0%    BUY         +$60
+TSLA    $376.02   $417.85   +11.1%   SELL/HOLD   +$222 (exited at $390)
+AAPL    $270.71   $304.99   +12.7%   BUY         +$254
+JPM     $311.45   $303.00   -2.7%    BUY         -$54
+IBM     $233.04   $252.97   +8.5%    SELL/HOLD   +$170 (exited recently)
+Total                                             +$652 (+6.5%)
 Scheduler: GitHub Actions, daily 9PM UTC (2PM PDT), weekdays only
 Log file: results/paper_trading_log.csv (auto committed to repo)
-Date        NVDA    TSLA    AAPL    JPM     IBM
-Apr 29      213.17  376.02  270.71  311.45  233.04  ALL BUY
-Apr 30      209.25  372.80  270.17  309.25  227.10  IBM SELL
-May 2       198.45  390.82  280.14  312.47  232.20  TSLA SELL
-May 4       198.45  390.82  280.14  312.47  232.20  TSLA SELL (same prices - weekend)
-May 5       198.48  392.51  276.83  307.65  229.48  TSLA SELL
 
-Signal accuracy so far:
-- TSLA SELL at $390 — correct, held above that level
-- AAPL BUY — correct, recovered from Apr 30 dip
-- NVDA BUY — incorrect, continued declining from $213 to $198
-- JPM BUY — mixed, slight decline
-- IBM — strategy switching between RF and Bollinger (known issue)
+---
+
+## Alpaca Orders (May 24, 2026)
+First real paper trades placed:
+- NVDA: BUY 23.2202 shares — pending fill at Monday open
+- AAPL: BUY 16.1907 shares — pending fill at Monday open
+- JPM: BUY 16.3196 shares — pending fill at Monday open
+- TSLA: No order — SELL/HOLD signal
+- IBM: No order — SELL/HOLD signal
+Note: Duplicate NVDA order placed during testing — cancel one before Monday open
 
 ---
 
@@ -222,6 +246,8 @@ Signal accuracy so far:
 - Position sizing: 50% of capital per trade (single stock)
 - Sharpe annualized with sqrt(252)
 - Walk forward split: first 50% train, second 50% test
+- Alpaca execution: MarketOrderRequest, TimeInForce.DAY
+- Duplicate order prevention: checks both open positions AND pending orders
 
 ---
 
@@ -235,36 +261,53 @@ Signal accuracy so far:
 - More training data (2015 vs 2020) significantly improves ML results
 - TSLA optimization severely overfits — unreliable parameters
 - Composite score captures return AND safety simultaneously
+- TSLA momentum misread: LR sees sustained momentum as overextension
 
 ---
 
 ## Known Issues / Technical Debt
-- IBM strategy switches between RF and Bollinger between runs — 
-  auto selector re-evaluates every run instead of locking in strategy
-- Timestamp format inconsistent in paper_trading_log.csv
-  (early entries: M/D/YYYY H:MM, later: YYYY-MM-DD HH:MM:SS)
-- Optimizer only built for EMA Crossover — needs extending to other strategies
+- IBM strategy switches between RF and Bollinger between runs
+  (auto selector re-evaluates every run — no strategy lock)
+- Timestamp format inconsistent in early CSV rows (cosmetic only)
+- Optimizer only built for EMA Crossover — needs extending
 - squeeze() needed throughout due to pandas version strictness
-- yfinance multi-level columns fixed in loader.py but fragile
-- NVDA EMA Crossover stuck on BUY despite price declining — EMA lag issue
+- NVDA EMA Crossover slow to exit declining positions — EMA lag
 - No strategy lock — auto selector picks differently each run
+- TSLA momentum bias — LR model trained on mean-reversion behavior
 
 ---
 
 ## Version Roadmap
-### Version 1 (Done) — Single stock, SMA, basic backtest
-### Version 2 (Done) — EMA, RSI, Bollinger, risk management
-### Version 3 (Done) — Multi-strategy, multi-stock, Sharpe ranking
-### Version 4 (Done) — Parameter optimization, walk forward testing
-### Version 5 (Done) — ML signal generation (LR + RF)
-### Version 6 (Done) — Autonomous strategy selection, composite scoring
-### Version 7 (Done) — Paper trading, GitHub Actions scheduler
-### Version 8 (planned) — Performance dashboard, codebase cleanup
-  - Fix strategy lock issue
-  - Fix timestamp consistency
-  - Streamlit dashboard for paper trading visualization
-  - Strategy retraining schedule
-  - Codebase review and refactor
+### Version 1 ✅ — Single stock, SMA, basic backtest
+### Version 2 ✅ — EMA, RSI, Bollinger, risk management
+### Version 3 ✅ — Multi-strategy, multi-stock, Sharpe ranking
+### Version 4 ✅ — Parameter optimization, walk forward testing
+### Version 5 ✅ — ML signal generation (LR + RF)
+### Version 6 ✅ — Autonomous strategy selection, composite scoring
+### Version 7 ✅ — Paper trading, GitHub Actions scheduler
+### Version 8 ✅ — Streamlit dashboard, Alpaca paper trading integration
+### Version 9 (planned) — Performance Analytics
+  - P&L tracking per ticker from entry prices
+  - Win/Loss analysis on completed trades
+  - Biggest winners/losers leaderboard
+  - Real time drawdown tracker
+  - Signal quality score (live accuracy)
+  - Problem detection (strategy switching, stop loss breach)
+### Version 10 (planned) — Quantara NN merger
+  - Separate daily (this project) and intraday (NN) systems
+  - Unified dashboard showing both
+  - SQLite when moving to live trading
+  - Fix Alpaca NN position sizing bug
+
+---
+
+## Related Project
+Quantara NN — separate intraday trading system
+- Minute data, MLP neural network, Nemotron LLM reasoning
+- Alpaca live order execution
+- Multi-agent pipeline
+- Position sizing bug: stacks positions despite 2% limit
+  Fix: check pending orders + open positions before buying
 
 ---
 
@@ -279,8 +322,13 @@ Local: C:\Users\logic\OneDrive\Desktop\REQuantara
 - matplotlib — visualization
 - scikit-learn — ML models
 - openpyxl — Excel export
+- streamlit — dashboard
+- plotly — interactive charts
+- alpaca-py — paper trading execution
 
 ## Notes from Plot Diagnostics
-- TSLA is having issues relating to momentum. Examined from Apr. 29, - May 8th /2026
-  - model keeps misreading momentum as overextension rather than sustained momentum
-  - Might be worth adding a spefific momentum checker that is forcibly weighed more due to how momentum heavy TSLA is
+- TSLA: LR model misreads sustained momentum as overextension
+  - Examined Apr 29 - May 8, 2026
+  - RSI staying near 70, BB_position climbing above 1.0
+  - Model fires SELL during entire recovery from $372 to $445
+  - Fix: add momentum-weighted feature or momentum-aware model
