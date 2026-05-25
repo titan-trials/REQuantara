@@ -15,6 +15,7 @@ from strategy.auto_selector import auto_select, compute_composite_score
 from evaluation.metrics import get_metrics
 from backtest.engine import run_backtest
 import os
+from strategy.alpaca_executor import get_client, execute_signal
 
 
 def get_recent_data(ticker, lookback_days=300):
@@ -133,6 +134,13 @@ def run_paper_trader(tickers, start, end, initial_capital, stop_loss, position_s
         
         print(f"Current Price     : ${current_price:.2f}")
         print(f"Today's Signal    : {'BUY' if signal == 1 else 'SELL/HOLD'}")
+
+        # Execute on Alpaca
+        try:
+            client = get_client()
+            execute_signal(client, ticker, signal, current_price)
+        except Exception as e:
+            print(f"[{ticker}] Alpaca execution failed: {e}")
 
         signals.append({
             "Ticker": ticker,

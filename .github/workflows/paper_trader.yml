@@ -26,6 +26,9 @@ jobs:
           pip install -r requirements.txt
 
       - name: Run paper trader
+        env:
+          ALPACA_KEY: ${{ secrets.ALPACA_KEY }}
+          ALPACA_SECRET: ${{ secrets.ALPACA_SECRET }}
         run: |
           python run_paper_trader.py
 

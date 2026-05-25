@@ -1,5 +1,10 @@
 # Quantara Configuration
-# Change settings here to run different backtests
+
+# Alpaca
+import os
+ALPACA_KEY = os.getenv("ALPACA_KEY")
+ALPACA_SECRET = os.getenv("ALPACA_SECRET")
+ALPACA_BASE_URL = "https://paper-api.alpaca.markets"
 
 TICKERS = ["NVDA", "TSLA", "AAPL", "JPM", "IBM"]
 START = "2015-01-01"
