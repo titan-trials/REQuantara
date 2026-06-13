@@ -53,4 +53,4 @@ elif MODE == "paper":
     print(signals.to_string())
 
 elif MODE == "diagnostic":
-    plot_diagnostic("TSLA", INITIAL_CAPITAL, STOP_LOSS, POSITION_SIZE)
+    plot_diagnostic("IBM", INITIAL_CAPITAL, STOP_LOSS, POSITION_SIZE)
