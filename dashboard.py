@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
-from evaluation.performance import build_trade_segments, ticker_summary, win_loss_stats
+from evaluation.performance import build_trade_segments, ticker_summary, win_loss_stats, drawdown_tracker, signal_quality_score, detect_problems
 
 st.set_page_config(
     page_title="Quantara",
@@ -653,6 +653,42 @@ with tab5:
         segments = build_trade_segments(log)
         summary = ticker_summary(segments, log)
         stats = win_loss_stats(segments)
+        drawdown = drawdown_tracker(log)
+        quality = signal_quality_score(log)
+        problems = detect_problems(summary, drawdown, quality)
+
+        # ── Problem detection alerts (grouped by ticker) ─────────────────
+        st.markdown("<div class='q-label'>System Alerts</div>", unsafe_allow_html=True)
+
+        # Group flags by ticker
+        from collections import defaultdict
+        grouped = defaultdict(list)
+        for p in problems:
+            grouped[p["Ticker"]].append(p)
+
+        sev_icon = {"CRITICAL": "🔴", "WARNING": "🟡", "OK": "🟢"}
+        sev_color = {"CRITICAL": "#e05252", "WARNING": "#fbbf24", "OK": "#69f0ae"}
+
+        for ticker, flags in grouped.items():
+            if ticker == "—":
+                st.markdown(f"<div style='background:rgba(105,240,174,0.06);border:1px solid #69f0ae33;border-radius:8px;padding:12px 16px;margin-bottom:8px;font-size:13px;color:#cbd5e1'>🟢 {flags[0]['Message']}</div>", unsafe_allow_html=True)
+                continue
+
+            # Header line — show all severity icons present for this ticker
+            icons = " ".join(sev_icon[f["Severity"]] for f in flags)
+            tc = TICKER_COLORS.get(ticker, "#94a3b8")
+            worst_sev = "CRITICAL" if any(f["Severity"] == "CRITICAL" for f in flags) else "WARNING"
+            border_color = sev_color[worst_sev]
+
+            lines = "".join(
+                f"<div style='padding:6px 0 6px 8px;border-left:2px solid {sev_color[f['Severity']]};margin-bottom:4px;font-size:12px;color:#cbd5e1'>{sev_icon[f['Severity']]} {f['Message']}</div>"
+                for f in flags
+            )
+
+            card_html = f"<div style='background:#0f1629;border:1px solid {border_color}33;border-radius:10px;padding:14px 18px;margin-bottom:10px'><div style='display:flex;align-items:center;gap:8px;margin-bottom:8px'><span style='font-family:JetBrains Mono,monospace;font-size:14px;color:{tc};font-weight:600;letter-spacing:1px'>{ticker}</span><span>{icons}</span></div>{lines}</div>"
+            st.markdown(card_html, unsafe_allow_html=True)
+
+        st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
 
         # ── Overall win/loss stats row ──────────────────────────────────────
         st.markdown("<div class='q-label'>Win / Loss Summary — All Closed Trades</div>",
@@ -748,4 +784,32 @@ with tab5:
 
             st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
-        st.caption("* Open position — P&L unrealized and subject to change")
+        st.caption("Asterisk (*) indicates an open position — P&L unrealized and subject to change")
+        
+        st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
+        st.markdown("<div class='q-label'>Drawdown from Live Peak</div>", unsafe_allow_html=True)
+
+        dd_display = drawdown.copy()
+        dd_display["Peak_Date"] = dd_display["Peak_Date"].dt.strftime("%Y-%m-%d")
+        dd_display = dd_display[[
+            "Ticker", "Peak_Price", "Peak_Date", "Current_Price",
+            "Current_Drawdown_Pct", "Max_Drawdown_Pct"
+        ]]
+        dd_display["Peak_Price"] = dd_display["Peak_Price"].map("${:.2f}".format)
+        dd_display["Current_Price"] = dd_display["Current_Price"].map("${:.2f}".format)
+        dd_display["Current_Drawdown_Pct"] = dd_display["Current_Drawdown_Pct"].map("{:.1f}%".format)
+        dd_display["Max_Drawdown_Pct"] = dd_display["Max_Drawdown_Pct"].map("{:.1f}%".format)
+
+        def color_dd(val):
+            pct = float(val.replace("%", ""))
+            if pct <= -15:
+                return "color: #e05252; font-weight: 600"
+            elif pct <= -5:
+                return "color: #fbbf24"
+            return "color: #69f0ae"
+
+        st.dataframe(
+            dd_display.style.map(color_dd, subset=["Current_Drawdown_Pct", "Max_Drawdown_Pct"]),
+            use_container_width=True,
+            hide_index=True,
+        )

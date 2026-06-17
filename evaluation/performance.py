@@ -138,3 +138,170 @@ def win_loss_stats(segments: pd.DataFrame) -> dict:
         "biggest_win": closed["PnL"].max(),
         "biggest_loss": closed["PnL"].min(),
     }
+
+
+def drawdown_tracker(log: pd.DataFrame) -> pd.DataFrame:
+    """
+    For each ticker, tracks the running peak price since tracking began
+    and calculates current drawdown from that peak.
+    """
+    results = []
+
+    for ticker in log["Ticker"].unique():
+        tdf = log[log["Ticker"] == ticker].sort_values("Timestamp")
+        prices = tdf["Price"].values
+
+        running_peak = prices[0]
+        max_drawdown = 0
+        peak_price = prices[0]
+        peak_date = tdf["Timestamp"].iloc[0]
+
+        for i, price in enumerate(prices):
+            if price > running_peak:
+                running_peak = price
+                peak_price = price
+                peak_date = tdf["Timestamp"].iloc[i]
+            drawdown = (price - running_peak) / running_peak * 100
+            if drawdown < max_drawdown:
+                max_drawdown = drawdown
+
+        current_price = prices[-1]
+        current_drawdown = (current_price - running_peak) / running_peak * 100
+
+        results.append({
+            "Ticker": ticker,
+            "Peak_Price": running_peak,
+            "Peak_Date": peak_date,
+            "Current_Price": current_price,
+            "Current_Drawdown_Pct": current_drawdown,
+            "Max_Drawdown_Pct": max_drawdown,
+        })
+
+    return pd.DataFrame(results)
+
+
+def signal_quality_score(log: pd.DataFrame) -> pd.DataFrame:
+    """
+    For each ticker, checks every BUY signal and whether the price
+    increased on the next available signal (next trading day).
+    Returns accuracy per ticker plus overall breakdown.
+    """
+    results = []
+
+    for ticker in log["Ticker"].unique():
+        tdf = log[log["Ticker"] == ticker].sort_values("Timestamp").reset_index(drop=True)
+
+        correct = 0
+        total_checked = 0
+
+        for i in range(len(tdf) - 1):
+            current_signal = tdf.loc[i, "Signal"]
+            current_price = tdf.loc[i, "Price"]
+            next_price = tdf.loc[i + 1, "Price"]
+
+            if current_signal == 1:  # BUY signal
+                total_checked += 1
+                if next_price > current_price:
+                    correct += 1
+
+        accuracy = (correct / total_checked * 100) if total_checked > 0 else 0
+
+        results.append({
+            "Ticker": ticker,
+            "Buy_Signals_Checked": total_checked,
+            "Correct_Next_Day_Up": correct,
+            "Accuracy_Pct": accuracy,
+        })
+
+    return pd.DataFrame(results)
+
+#Dont Impment this function yet not statstically significant with current data, but will be useful as we gather more data over time to see if signal quality is improving or degrading.
+def signal_quality_weekly(log: pd.DataFrame) -> pd.DataFrame:
+    """
+    Breaks signal quality score into weekly buckets per ticker,
+    so we can see if accuracy is trending up or down over time.
+    """
+    results = []
+
+    for ticker in log["Ticker"].unique():
+        tdf = log[log["Ticker"] == ticker].sort_values("Timestamp").reset_index(drop=True)
+        tdf["Week"] = tdf["Timestamp"].dt.to_period("W").apply(lambda r: r.start_time)
+
+        for week, wdf in tdf.groupby("Week"):
+            wdf = wdf.reset_index(drop=True)
+            correct = 0
+            total_checked = 0
+
+            for i in range(len(wdf) - 1):
+                if wdf.loc[i, "Signal"] == 1:
+                    total_checked += 1
+                    if wdf.loc[i + 1, "Price"] > wdf.loc[i, "Price"]:
+                        correct += 1
+
+            # Also need to check across week boundary using the full series
+            # so we don't lose the last day's comparison within tdf
+            accuracy = (correct / total_checked * 100) if total_checked > 0 else None
+
+            results.append({
+                "Ticker": ticker,
+                "Week_Start": week,
+                "Buy_Signals": total_checked,
+                "Correct": correct,
+                "Weekly_Accuracy_Pct": accuracy,
+            })
+
+    return pd.DataFrame(results)
+
+
+def detect_problems(summary, drawdown, quality, stop_loss=0.05):
+    """
+    Scans ticker-level performance data and flags issues in plain English.
+    Returns a list of dicts: {Ticker, Severity, Message}
+    """
+    flags = []
+
+    for _, row in summary.iterrows():
+        ticker = row["Ticker"]
+
+        # Check 1 — strategy switching
+        if row["Switch_Flag"]:
+            flags.append({
+                "Ticker": ticker,
+                "Severity": "WARNING",
+                "Message": f"{ticker} has switched strategy {row['Strategy_Switches']} time(s) — signal instability detected."
+            })
+
+        # Check 2 — stop loss breach using current drawdown
+        dd_row = drawdown[drawdown["Ticker"] == ticker]
+        if not dd_row.empty:
+            current_dd = dd_row["Current_Drawdown_Pct"].values[0]
+            if current_dd <= -stop_loss * 100:
+                flags.append({
+                    "Ticker": ticker,
+                    "Severity": "CRITICAL",
+                    "Message": f"{ticker} is down {current_dd:.1f}% from its peak — beyond the {stop_loss*100:.0f}% stop loss threshold."
+                })
+
+        # Check 3 — signal accuracy below coin flip baseline
+        q_row = quality[quality["Ticker"] == ticker]
+        if not q_row.empty:
+            acc = q_row["Accuracy_Pct"].values[0]
+            checked = q_row["Buy_Signals_Checked"].values[0]
+            if acc < 50 and checked >= 10:  # only flag if enough samples to be meaningful
+                flags.append({
+                    "Ticker": ticker,
+                    "Severity": "WARNING",
+                    "Message": f"{ticker} signal accuracy is {acc:.1f}% on {checked} checked signals — worse than a coin flip."
+                })
+
+    if not flags:
+        flags.append({
+            "Ticker": "—",
+            "Severity": "OK",
+            "Message": "No issues detected across all tickers."
+        })
+
+    return flags
+
+
+
