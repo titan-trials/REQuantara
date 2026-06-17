@@ -3,6 +3,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
+from evaluation.performance import build_trade_segments, ticker_summary, win_loss_stats
 
 st.set_page_config(
     page_title="Quantara",
@@ -310,11 +311,12 @@ if not load_error and not log.empty:
     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
 
 # ── Tabs ───────────────────────────────────────────────────────────────────────
-tab1, tab2, tab3, tab4 = st.tabs([
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "📈  Paper Trader",
     "📊  Strategy Results", 
     "🏆  Auto Selection",
-    "🤖  ML Analysis"
+    "🤖  ML Analysis",
+    "💰  Performance"
 ])
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -640,3 +642,110 @@ with tab4:
         </div>
     </div>
     """, unsafe_allow_html=True)
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TAB 5 — PERFORMANCE
+# ══════════════════════════════════════════════════════════════════════════════
+with tab5:
+    if load_error or log.empty:
+        st.info("No paper trading data available.")
+    else:
+        segments = build_trade_segments(log)
+        summary = ticker_summary(segments, log)
+        stats = win_loss_stats(segments)
+
+        # ── Overall win/loss stats row ──────────────────────────────────────
+        st.markdown("<div class='q-label'>Win / Loss Summary — All Closed Trades</div>",
+                    unsafe_allow_html=True)
+
+        c1, c2, c3, c4, c5 = st.columns(5)
+        c1.markdown(f"""
+        <div style='background:#0f1629;border:1px solid #1e2d4a;border-radius:10px;padding:16px 20px'>
+            <div class='q-label'>Win Rate</div>
+            <div style='font-family:JetBrains Mono,monospace;font-size:1.4rem;color:#e2e8f0;font-weight:500'>{stats['win_rate']:.1f}%</div>
+        </div>""", unsafe_allow_html=True)
+
+        c2.markdown(f"""
+        <div style='background:#0f1629;border:1px solid #1e2d4a;border-radius:10px;padding:16px 20px'>
+            <div class='q-label'>Total Trades</div>
+            <div style='font-family:JetBrains Mono,monospace;font-size:1.4rem;color:#e2e8f0;font-weight:500'>{stats['total_trades']}</div>
+        </div>""", unsafe_allow_html=True)
+
+        c3.markdown(f"""
+        <div style='background:#0f1629;border:1px solid #1e2d4a;border-radius:10px;padding:16px 20px'>
+            <div class='q-label'>Avg Win</div>
+            <div style='font-family:JetBrains Mono,monospace;font-size:1.4rem;color:#69f0ae;font-weight:500'>+${stats['avg_win']:.0f}</div>
+        </div>""", unsafe_allow_html=True)
+
+        c4.markdown(f"""
+        <div style='background:#0f1629;border:1px solid #1e2d4a;border-radius:10px;padding:16px 20px'>
+            <div class='q-label'>Avg Loss</div>
+            <div style='font-family:JetBrains Mono,monospace;font-size:1.4rem;color:#e05252;font-weight:500'>${stats['avg_loss']:.0f}</div>
+        </div>""", unsafe_allow_html=True)
+
+        c5.markdown(f"""
+        <div style='background:#0f1629;border:1px solid #1e2d4a;border-radius:10px;padding:16px 20px'>
+            <div class='q-label'>Best / Worst Trade</div>
+            <div style='font-family:JetBrains Mono,monospace;font-size:1rem;color:#69f0ae;font-weight:500'>+${stats['biggest_win']:.0f}</div>
+            <div style='font-family:JetBrains Mono,monospace;font-size:1rem;color:#e05252;font-weight:500'>${stats['biggest_loss']:.0f}</div>
+        </div>""", unsafe_allow_html=True)
+
+        st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
+
+        # ── Per ticker cards with expandable history ────────────────────────
+        st.markdown("<div class='q-label'>Per Ticker Breakdown</div>", unsafe_allow_html=True)
+
+        for _, row in summary.sort_values("Total_PnL", ascending=False).iterrows():
+            ticker = row["Ticker"]
+            total_pnl = row["Total_PnL"]
+            is_open = row["Is_Open"]
+            trade_count = row["Trade_Count"]
+            switch_flag = row["Switch_Flag"]
+            switches = row["Strategy_Switches"]
+
+            pnl_color = "#69f0ae" if total_pnl >= 0 else "#e05252"
+            pnl_prefix = "+" if total_pnl >= 0 else ""
+            asterisk = "*" if is_open else ""
+            tc = TICKER_COLORS.get(ticker, "#94a3b8")
+
+            switch_badge = ""
+            if switch_flag:
+                switch_badge = f"<span style='background:rgba(251,191,36,0.1);color:#fbbf24;border:1px solid rgba(251,191,36,0.3);border-radius:6px;padding:2px 8px;font-size:10px;margin-left:8px'>⚠ {switches} switch{'es' if switches > 1 else ''}</span>"
+
+            header_html = f"<div style='background:#0f1629;border:1px solid #1e2d4a;border-radius:10px;padding:16px 20px;margin-bottom:4px;display:flex;justify-content:space-between;align-items:center'><div style='display:flex;align-items:center;gap:14px'><span style='font-family:JetBrains Mono,monospace;font-size:15px;color:{tc};font-weight:600;letter-spacing:1px'>{ticker}</span>{switch_badge}</div><div style='display:flex;align-items:center;gap:24px'><span style='font-size:12px;color:#94a3b8'>{trade_count} trades</span><span style='font-family:JetBrains Mono,monospace;font-size:16px;color:{pnl_color};font-weight:600'>{pnl_prefix}${total_pnl:.0f}{asterisk}</span></div></div>"
+            st.markdown(header_html, unsafe_allow_html=True)
+
+            with st.expander(f"View {ticker} trade history"):
+                tseg = segments[segments["Ticker"] == ticker].sort_values("Entry_Date")
+                display_seg = tseg[[
+                    "Strategy", "Entry_Date", "Entry_Price",
+                    "Exit_Date", "Exit_Price", "Duration_Days", "PnL", "PnL_Pct", "Status"
+                ]].copy()
+
+                display_seg["Entry_Date"] = display_seg["Entry_Date"].dt.strftime("%Y-%m-%d")
+                display_seg["Exit_Date"] = display_seg.apply(
+                    lambda r: "OPEN*" if r["Status"] == "OPEN" else r["Exit_Date"].strftime("%Y-%m-%d"),
+                    axis=1
+                )
+                display_seg["Entry_Price"] = display_seg["Entry_Price"].map("${:.2f}".format)
+                display_seg["Exit_Price"] = display_seg["Exit_Price"].map("${:.2f}".format)
+                display_seg["PnL"] = display_seg.apply(
+                    lambda r: f"{'+' if r['PnL'] >= 0 else ''}${r['PnL']:.0f}{'*' if r['Status']=='OPEN' else ''}",
+                    axis=1
+                )
+                display_seg["PnL_Pct"] = display_seg["PnL_Pct"].map("{:+.2f}%".format)
+
+                def color_pnl_pct(val):
+                    pct = float(val.replace("%", "").replace("+", ""))
+                    color = "#69f0ae" if pct >= 0 else "#e05252"
+                    return f"color: {color}; font-weight: 600"
+
+                st.dataframe(
+                    display_seg.style.map(color_pnl_pct, subset=["PnL_Pct"]),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+
+        st.caption("* Open position — P&L unrealized and subject to change")
