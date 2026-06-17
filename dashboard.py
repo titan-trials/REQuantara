@@ -254,6 +254,61 @@ if not load_error and not log.empty:
 
     st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
 
+    # Portfolio summary row
+    st.markdown("<div class='q-label'>Portfolio Summary</div>", unsafe_allow_html=True)
+    
+    total_pnl = sum(
+        ((latest[latest["Ticker"] == t]["Price"].values[0] - ENTRY_PRICES[t]) / ENTRY_PRICES[t]) * 2000
+        for t in ENTRY_PRICES if t in latest["Ticker"].values
+    )
+    total_value = 10000 + total_pnl
+    total_return = (total_pnl / 10000) * 100
+    
+    ticker_returns = {
+        t: ((latest[latest["Ticker"] == t]["Price"].values[0] - ENTRY_PRICES[t]) / ENTRY_PRICES[t]) * 100
+        for t in ENTRY_PRICES if t in latest["Ticker"].values
+    }
+    best = max(ticker_returns, key=ticker_returns.get)
+    worst = min(ticker_returns, key=ticker_returns.get)
+    
+    pnl_color = "#69f0ae" if total_pnl >= 0 else "#e05252"
+    pnl_prefix = "+" if total_pnl >= 0 else ""
+    
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.markdown(f"""
+    <div style='background:#0f1629;border:1px solid #1e2d4a;border-radius:10px;padding:16px 20px'>
+        <div class='q-label'>Portfolio Value</div>
+        <div style='font-family:JetBrains Mono,monospace;font-size:1.4rem;color:#e2e8f0;font-weight:500'>${total_value:,.0f}</div>
+    </div>""", unsafe_allow_html=True)
+    
+    c2.markdown(f"""
+    <div style='background:#0f1629;border:1px solid #1e2d4a;border-radius:10px;padding:16px 20px'>
+        <div class='q-label'>Total P&L</div>
+        <div style='font-family:JetBrains Mono,monospace;font-size:1.4rem;color:{pnl_color};font-weight:500'>{pnl_prefix}${total_pnl:,.0f}</div>
+    </div>""", unsafe_allow_html=True)
+    
+    c3.markdown(f"""
+    <div style='background:#0f1629;border:1px solid #1e2d4a;border-radius:10px;padding:16px 20px'>
+        <div class='q-label'>Total Return</div>
+        <div style='font-family:JetBrains Mono,monospace;font-size:1.4rem;color:{pnl_color};font-weight:500'>{pnl_prefix}{total_return:.1f}%</div>
+    </div>""", unsafe_allow_html=True)
+    
+    c4.markdown(f"""
+    <div style='background:#0f1629;border:1px solid #1e2d4a;border-radius:10px;padding:16px 20px'>
+        <div class='q-label'>Best Performer</div>
+        <div style='font-family:JetBrains Mono,monospace;font-size:1.4rem;color:#69f0ae;font-weight:500'>{best}</div>
+        <div style='font-size:11px;color:#69f0ae'>+{ticker_returns[best]:.1f}%</div>
+    </div>""", unsafe_allow_html=True)
+    
+    c5.markdown(f"""
+    <div style='background:#0f1629;border:1px solid #1e2d4a;border-radius:10px;padding:16px 20px'>
+        <div class='q-label'>Worst Performer</div>
+        <div style='font-family:JetBrains Mono,monospace;font-size:1.4rem;color:#e05252;font-weight:500'>{worst}</div>
+        <div style='font-size:11px;color:#e05252'>{ticker_returns[worst]:.1f}%</div>
+    </div>""", unsafe_allow_html=True)
+    
+    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+
 # ── Tabs ───────────────────────────────────────────────────────────────────────
 tab1, tab2, tab3, tab4 = st.tabs([
     "📈  Paper Trader",
