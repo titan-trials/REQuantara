@@ -4,7 +4,7 @@
 # Options: "compare", "optimize", "ml", "rf", "auto", "paper"
 # ============================================================
 
-MODE = "diagnostic"  
+MODE = "optimize"  
 
 # Config
 from config import TICKERS, START, END, INITIAL_CAPITAL, STOP_LOSS, POSITION_SIZE
