@@ -1,10 +1,10 @@
 # ============================================================
 # Quantara - Main Entry Point
 # Set MODE to control what runs
-# Options: "compare", "optimize", "ml", "rf", "auto", "paper"
+# Options: "compare", "optimize", "ml", "rf", "xgb", "auto", "paper", "diagnostic"
 # ============================================================
 
-MODE = "optimize"  
+MODE = "auto"  
 
 # Config
 from config import TICKERS, START, END, INITIAL_CAPITAL, STOP_LOSS, POSITION_SIZE
@@ -12,7 +12,7 @@ from config import TICKERS, START, END, INITIAL_CAPITAL, STOP_LOSS, POSITION_SIZ
 # Strategy
 from strategy.runner import run_all_strategies
 from strategy.optimizer import optimize_all_tickers
-from strategy.ml_signal import run_ml_strategy, run_rf_strategy
+from strategy.ml_signal import run_ml_strategy, run_rf_strategy , run_xgb_strategy
 from strategy.auto_selector import auto_select
 from strategy.paper_trader import run_paper_trader
 
@@ -40,6 +40,10 @@ elif MODE == "ml":
 elif MODE == "rf":
     for ticker in TICKERS:
         run_rf_strategy(ticker, START, END, INITIAL_CAPITAL, STOP_LOSS, POSITION_SIZE)
+
+elif MODE == "xgb":
+    for ticker in TICKERS:
+        run_xgb_strategy(ticker, START, END, INITIAL_CAPITAL, STOP_LOSS, POSITION_SIZE)
 
 elif MODE == "auto":
     selections = auto_select(TICKERS, START, END, INITIAL_CAPITAL, STOP_LOSS, POSITION_SIZE)

@@ -8,7 +8,7 @@ from signals.sma_crossover import generate_crossover_signals, generate_ema_cross
 from signals.bollinger_signal import generate_bollinger_signals
 from backtest.engine import run_backtest
 from evaluation.metrics import get_metrics
-from strategy.ml_signal import run_ml_strategy, run_rf_strategy
+from strategy.ml_signal import run_ml_strategy, run_rf_strategy, run_xgb_strategy 
 
 def compute_composite_score(metrics):
     sharpe = metrics["Sharpe_Ratio"]
@@ -70,8 +70,8 @@ def evaluate_ml(ticker, start, end, initial_capital, stop_loss, position_size):
         lr_metrics["Strategy"] = "Logistic Regression"
         lr_metrics["Score"] = compute_composite_score(lr_metrics)
         results.append(lr_metrics)
-    except:
-        pass
+    except Exception as e:
+        print(f"Logistic Regression failed for {ticker}: {e}")
 
     try:
         _, rf_metrics, _, _ = run_rf_strategy(
@@ -80,8 +80,18 @@ def evaluate_ml(ticker, start, end, initial_capital, stop_loss, position_size):
         rf_metrics["Strategy"] = "Random Forest"
         rf_metrics["Score"] = compute_composite_score(rf_metrics)
         results.append(rf_metrics)
-    except:
-        pass
+    except Exception as e:
+        print(f"Random Forest failed for {ticker}: {e}")
+
+    try:
+        _, xgb_metrics, _, _ = run_xgb_strategy(
+            ticker, start, end, initial_capital, stop_loss, position_size
+        )
+        xgb_metrics["Strategy"] = "XGBoost"
+        xgb_metrics["Score"] = compute_composite_score(xgb_metrics)
+        results.append(xgb_metrics)
+    except Exception as e:
+        print(f"XGBoost failed for {ticker}: {e}")
 
     return results
 
