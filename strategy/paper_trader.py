@@ -5,7 +5,7 @@ from indicators.rsi import compute_rsi
 from indicators.bollinger import compute_bollinger_bands
 from signals.sma_crossover import generate_crossover_signals, generate_ema_crossover_signals, generate_combined_signals
 from signals.bollinger_signal import generate_bollinger_signals
-from strategy.ml_signal import build_features, build_target
+from strategy.ml_signal import FEATURE_COLS, build_features, build_target
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import StandardScaler
@@ -68,14 +68,10 @@ def generate_current_signal(df, strategy_name, initial_capital, stop_loss, posit
             df = build_features(df)
             df = build_target(df)
             df = df.dropna()
-            feature_cols = [
-                "EMA_gap", "RSI", "BB_position", "Momentum_5", "Momentum_10",
-                "Momentum_20", "Momentum_30", "RSI_slope", "Volatility_10",
-                "Volatility_20", "SMA_gap", "Price_vs_SMA20", "Price_vs_SMA50",
-                "BB_width"
-            ]
-            X = df[feature_cols]
+            
+            X = df[FEATURE_COLS]
             y = df["Target"]
+
             midpoint = len(df) // 2
             scaler = StandardScaler()
             X_scaled = scaler.fit_transform(X)
@@ -88,13 +84,8 @@ def generate_current_signal(df, strategy_name, initial_capital, stop_loss, posit
             df = build_features(df)
             df = build_target(df)
             df = df.dropna()
-            feature_cols = [
-                "EMA_gap", "RSI", "BB_position", "Momentum_5", "Momentum_10",
-                "Momentum_20", "Momentum_30", "RSI_slope", "Volatility_10",
-                "Volatility_20", "SMA_gap", "Price_vs_SMA20", "Price_vs_SMA50",
-                "BB_width"
-            ]
-            X = df[feature_cols]
+
+            X = df[FEATURE_COLS]
             y = df["Target"]
             midpoint = len(df) // 2
             model = RandomForestClassifier(n_estimators=100, random_state=42)
@@ -138,16 +129,26 @@ def run_paper_trader(tickers, start, end, initial_capital, stop_loss, position_s
         # Execute on Alpaca
         try:
             client = get_client()
-            execute_signal(client, ticker, signal, current_price)
+            order_result, exit_reason = execute_signal(client, ticker, signal, current_price)
         except Exception as e:
             print(f"[{ticker}] Alpaca execution failed: {e}")
+            exit_reason = None
+
+        #Ensuring that the logged signal reflects the actual action taken, especially in case of a stop loss trigger
+        if exit_reason == "STOP_LOSS":
+            logged_signal = 0
+            logged_action = "SELL/HOLD"
+        else:
+            logged_signal = signal
+            logged_action = "BUY" if signal == 1 else "SELL/HOLD"
 
         signals.append({
             "Ticker": ticker,
             "Strategy": best_strategy,
-            "Signal": signal,
+            "Signal": logged_signal,
             "Price": round(current_price, 2),
-            "Action": "BUY" if signal == 1 else "SELL/HOLD"
+            "Action": logged_action,
+            "Exit_Reason": exit_reason if exit_reason else ""
         })
 
     log_signals(signals)

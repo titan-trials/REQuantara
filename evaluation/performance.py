@@ -1,4 +1,7 @@
 import pandas as pd
+KNOWN_EXIT_REASON_OVERRIDES = {
+    ("NVDA", "2026-06-24 22:13:42"): "STOP_LOSS",
+}
 
 def build_trade_segments(log: pd.DataFrame) -> pd.DataFrame:
     """
@@ -9,7 +12,7 @@ def build_trade_segments(log: pd.DataFrame) -> pd.DataFrame:
 
     Returns a DataFrame with one row per segment:
     Ticker, Strategy, Entry_Date, Entry_Price, Exit_Date, Exit_Price,
-    Duration_Days, PnL, PnL_Pct, Status (CLOSED/OPEN)
+    Duration_Days, PnL, PnL_Pct, Status (CLOSED/OPEN), Exit_Reason
     """
     segments = []
 
@@ -23,9 +26,9 @@ def build_trade_segments(log: pd.DataFrame) -> pd.DataFrame:
             signal = row["Signal"]
             price = row["Price"]
             ts = row["Timestamp"]
+            exit_reason = row.get("Exit_Reason", "")
 
             if open_segment is None:
-                # No open position — start one only if signal is BUY
                 if signal == 1:
                     open_segment = {
                         "Ticker": ticker,
@@ -35,11 +38,8 @@ def build_trade_segments(log: pd.DataFrame) -> pd.DataFrame:
                     }
                 continue
 
-            # We have an open segment
             if strategy != open_segment["Strategy"]:
-                # Strategy changed — close current segment at this price
-                segments.append(_close_segment(open_segment, ts, price, status="CLOSED"))
-                # Start new segment if new strategy says BUY
+                segments.append(_close_segment(open_segment, ts, price, status="CLOSED", exit_reason=exit_reason))
                 if signal == 1:
                     open_segment = {
                         "Ticker": ticker,
@@ -52,24 +52,22 @@ def build_trade_segments(log: pd.DataFrame) -> pd.DataFrame:
                 continue
 
             if signal == 0:
-                # SELL signal — close the segment
-                segments.append(_close_segment(open_segment, ts, price, status="CLOSED"))
+                segments.append(_close_segment(open_segment, ts, price, status="CLOSED", exit_reason=exit_reason))
                 open_segment = None
 
-        # End of ticker's data — if still open, mark as OPEN (unrealized)
         if open_segment is not None:
             last_row = tdf.iloc[-1]
             segments.append(_close_segment(
-                open_segment, last_row["Timestamp"], last_row["Price"], status="OPEN"
+                open_segment, last_row["Timestamp"], last_row["Price"], status="OPEN", exit_reason=""
             ))
 
     return pd.DataFrame(segments)
 
 
-def _close_segment(open_segment, exit_date, exit_price, status):
+def _close_segment(open_segment, exit_date, exit_price, status, exit_reason=""):
     entry_price = open_segment["Entry_Price"]
     pnl_pct = ((exit_price - entry_price) / entry_price) * 100
-    pnl_dollar = pnl_pct / 100 * 2000  # $2k per ticker assumption
+    pnl_dollar = pnl_pct / 100 * 2000
     duration = (exit_date - open_segment["Entry_Date"]).days
 
     return {
@@ -83,6 +81,7 @@ def _close_segment(open_segment, exit_date, exit_price, status):
         "PnL": pnl_dollar,
         "PnL_Pct": pnl_pct,
         "Status": status,
+        "Exit_Reason": exit_reason if exit_reason else "SIGNAL",
     }
 
 
@@ -215,7 +214,7 @@ def signal_quality_score(log: pd.DataFrame) -> pd.DataFrame:
 
     return pd.DataFrame(results)
 
-#Dont Impment this function yet not statstically significant with current data, but will be useful as we gather more data over time to see if signal quality is improving or degrading.
+#Didn't implement this function yet not statstically significant with current data, but will be useful as we gather more data over time to see if signal quality is improving or degrading.
 def signal_quality_weekly(log: pd.DataFrame) -> pd.DataFrame:
     """
     Breaks signal quality score into weekly buckets per ticker,
@@ -303,5 +302,84 @@ def detect_problems(summary, drawdown, quality, stop_loss=0.05):
 
     return flags
 
+from config import STOP_LOSS
 
+def build_event_feed(segments: pd.DataFrame, summary: pd.DataFrame, log: pd.DataFrame) -> list:
+    """
+    Builds a chronological, narrated feed of trading events: closed trades
+    (with reason), new entries, and strategy switches. Returns a list of
+    dicts sorted most-recent-first, each with Date, Ticker, EventType, Message.
+    """
+    events = []
 
+    # Closed trade exits
+    closed = segments[segments["Status"] == "CLOSED"]
+    for _, row in closed.iterrows():
+        ticker = row["Ticker"]
+        pnl = row["PnL"]
+        exit_reason = row["Exit_Reason"]
+        override_key = (ticker, str(row["Exit_Date"]))
+        if override_key in KNOWN_EXIT_REASON_OVERRIDES:
+            exit_reason = KNOWN_EXIT_REASON_OVERRIDES[override_key]
+        exit_price = row["Exit_Price"]
+        entry_price = row["Entry_Price"]
+        strategy = row["Strategy"]
+
+        if exit_reason == "STOP_LOSS":
+            drawdown_pct = (exit_price - entry_price) / entry_price * 100
+            message = (
+                f"{ticker} sold @ ${exit_price:.2f} — stop loss "
+                f"({STOP_LOSS*100:.0f}%) triggered (down {abs(drawdown_pct):.1f}% "
+                f"from your ${entry_price:.2f} entry). You realized a "
+                f"{'loss' if pnl < 0 else 'gain'} of ${abs(pnl):.0f} on this position."
+            )
+            severity = "CRITICAL"
+        else:
+            verb = "gained" if pnl >= 0 else "lost"
+            message = (
+                f"{ticker} sold @ ${exit_price:.2f} — {strategy} signal "
+                f"flipped to SELL. You {verb} ${abs(pnl):.0f} on this position."
+            )
+            severity = "POSITIVE" if pnl >= 0 else "NEGATIVE"
+
+        events.append({
+            "Date": row["Exit_Date"],
+            "Ticker": ticker,
+            "EventType": "EXIT",
+            "Severity": severity,
+            "Message": message,
+        })
+
+    # New entries (every segment's start, OPEN or CLOSED)
+    for _, row in segments.iterrows():
+        ticker = row["Ticker"]
+        entry_price = row["Entry_Price"]
+        strategy = row["Strategy"]
+        message = f"{ticker} bought @ ${entry_price:.2f} — {strategy} signal flipped to BUY."
+        events.append({
+            "Date": row["Entry_Date"],
+            "Ticker": ticker,
+            "EventType": "ENTRY",
+            "Severity": "NEUTRAL",
+            "Message": message,
+        })
+
+    # Strategy switches: detect by walking the raw log per ticker
+    for ticker in log["Ticker"].unique():
+        tdf = log[log["Ticker"] == ticker].sort_values("Timestamp").reset_index(drop=True)
+        prev_strategy = None
+        for _, row in tdf.iterrows():
+            strategy = row["Strategy"]
+            if prev_strategy is not None and strategy != prev_strategy:
+                message = f"{ticker}'s auto-selected strategy switched from {prev_strategy} to {strategy}."
+                events.append({
+                    "Date": row["Timestamp"],
+                    "Ticker": ticker,
+                    "EventType": "SWITCH",
+                    "Severity": "WARNING",
+                    "Message": message,
+                })
+            prev_strategy = strategy
+
+    events_df = pd.DataFrame(events).sort_values("Date", ascending=False)
+    return events_df.to_dict("records")

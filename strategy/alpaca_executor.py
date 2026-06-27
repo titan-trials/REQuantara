@@ -2,6 +2,7 @@ from alpaca.trading.client import TradingClient
 from alpaca.trading.requests import MarketOrderRequest
 from alpaca.trading.enums import OrderSide, TimeInForce
 from config import ALPACA_KEY, ALPACA_SECRET, POSITION_SIZE, STOP_LOSS
+from strategy.ml_signal import build_features, build_target, FEATURE_COLS
 
 def get_client():
     return TradingClient(ALPACA_KEY, ALPACA_SECRET, paper=True)
@@ -22,7 +23,7 @@ def get_pending_orders(client, ticker):
                 str(o.status) in ["accepted", "pending_new", "new"]]
     except:
         return []
-    
+
 def check_stop_loss(position, current_price):
     """
     Returns True if the position has breached the stop loss threshold
@@ -36,6 +37,10 @@ def check_stop_loss(position, current_price):
 
 
 def execute_signal(client, ticker, signal, price):
+    """
+    Always returns a (result, reason) tuple. result is None if no order
+    was placed. reason is one of "STOP_LOSS", "SIGNAL", or None.
+    """
     account = get_account(client)
     portfolio_value = float(account.portfolio_value)
     position = get_position(client, ticker)
@@ -53,8 +58,8 @@ def execute_signal(client, ticker, signal, price):
             time_in_force=TimeInForce.DAY
         )
         result = client.submit_order(order)
-        print(f"[{ticker}] STOP LOSS TRIGGERED — down {drawdown_pct:.2f}% from entry ${entry_price:.2f}. Force SELL {shares} shares @ ~${price:.2f}")
-        return result
+        print(f"[{ticker}] STOP LOSS ({STOP_LOSS*100:.0f}%) TRIGGERED — down {drawdown_pct:.2f}% from entry ${entry_price:.2f}. Force SELL {shares} shares @ ~${price:.2f}")
+        return result, "STOP_LOSS"
 
     # BUY logic
     if signal == 1 and position is None and not pending:
@@ -63,7 +68,7 @@ def execute_signal(client, ticker, signal, price):
 
         if shares <= 0:
             print(f"[{ticker}] Skipping BUY — calculated 0 shares")
-            return None
+            return None, None
 
         order = MarketOrderRequest(
             symbol=ticker,
@@ -73,7 +78,7 @@ def execute_signal(client, ticker, signal, price):
         )
         result = client.submit_order(order)
         print(f"[{ticker}] BUY {shares} shares @ ~${price:.2f}")
-        return result
+        return result, "SIGNAL"
 
     # SELL logic (model signal)
     elif signal == 0 and position is not None:
@@ -86,11 +91,11 @@ def execute_signal(client, ticker, signal, price):
         )
         result = client.submit_order(order)
         print(f"[{ticker}] SELL {shares} shares @ ~${price:.2f}")
-        return result
+        return result, "SIGNAL"
 
     else:
         if signal == 1:
             print(f"[{ticker}] BUY signal but position/order exists — skip")
         else:
             print(f"[{ticker}] SELL signal but no position — skip")
-        return None
+        return None, None

@@ -11,6 +11,13 @@ from backtest.engine import run_backtest
 from evaluation.metrics import get_metrics
 from sklearn.ensemble import RandomForestClassifier
 
+FEATURE_COLS = [
+    "EMA_gap", "RSI", "BB_position", "Momentum_5", "Momentum_10",
+    "Momentum_20", "Momentum_30", "RSI_slope", "Volatility_10",
+    "Volatility_20", "SMA_gap", "Price_vs_SMA20", "Price_vs_SMA50",
+    "BB_width", "Mom_accel", "ADX_14"
+]
+
 def build_features(df):
     df = compute_sma(df, 20)
     df = compute_sma(df, 50)
@@ -75,14 +82,8 @@ def run_ml_strategy(ticker, start, end, initial_capital, stop_loss, position_siz
     df = build_target(df)
     df = df.dropna()
     
-    feature_cols = [
-    "EMA_gap", "RSI", "BB_position", "Momentum_5", "Momentum_10",
-    "Momentum_20", "Momentum_30", "RSI_slope", "Volatility_10",
-    "Volatility_20", "SMA_gap", "Price_vs_SMA20", "Price_vs_SMA50",
-    "BB_width", "Mom_accel", "ADX_14"
-]
     
-    X = df[feature_cols]
+    X = df[FEATURE_COLS]
     y = df["Target"]
     
     midpoint = len(df) // 2
@@ -113,11 +114,11 @@ def run_ml_strategy(ticker, start, end, initial_capital, stop_loss, position_siz
     print(f"Test Win Rate      : {metrics['Win_Rate']}%")
     print(f"Test Max Drawdown  : {metrics['Max_Drawdown']}%")
 
-    coefficients = pd.Series(model.coef_[0], index=feature_cols)
+    coefficients = pd.Series(model.coef_[0], index=FEATURE_COLS)
     print("\nModel Feature Weights:")
     print(coefficients.sort_values(ascending=False))
     
-    return df_test, metrics, model, feature_cols, scaler
+    return df_test, metrics, model, FEATURE_COLS, scaler
 
 def run_rf_strategy(ticker, start, end, initial_capital, stop_loss, position_size):
     df = load_data(ticker, start, end)
@@ -125,14 +126,7 @@ def run_rf_strategy(ticker, start, end, initial_capital, stop_loss, position_siz
     df = build_target(df)
     df = df.dropna()
     
-    feature_cols = [
-    "EMA_gap", "RSI", "BB_position", "Momentum_5", "Momentum_10",
-    "Momentum_20", "Momentum_30", "RSI_slope", "Volatility_10",
-    "Volatility_20", "SMA_gap", "Price_vs_SMA20", "Price_vs_SMA50",
-    "BB_width", "Mom_accel", "ADX_14"
-]
-    
-    X = df[feature_cols]
+    X = df[FEATURE_COLS]
     y = df["Target"]
     
     midpoint = len(df) // 2
@@ -153,7 +147,7 @@ def run_rf_strategy(ticker, start, end, initial_capital, stop_loss, position_siz
     df_test = run_backtest(df_test, initial_capital, stop_loss, position_size)
     metrics = get_metrics(df_test, initial_capital)
     
-    importances = pd.Series(model.feature_importances_, index=feature_cols)
+    importances = pd.Series(model.feature_importances_, index=FEATURE_COLS)
     
     print(f"\n--- RANDOM FOREST RESULTS: {ticker} ---")
     print(f"Test Total Return  : {metrics['Total_Return']}%")
@@ -163,4 +157,4 @@ def run_rf_strategy(ticker, start, end, initial_capital, stop_loss, position_siz
     print(f"\nFeature Importances:")
     print(importances.sort_values(ascending=False))
     
-    return df_test, metrics, model, feature_cols
+    return df_test, metrics, model, FEATURE_COLS

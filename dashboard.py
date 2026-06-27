@@ -3,7 +3,10 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
-from evaluation.performance import build_trade_segments, ticker_summary, win_loss_stats, drawdown_tracker, signal_quality_score, detect_problems
+from evaluation.performance import (
+    build_trade_segments, ticker_summary, win_loss_stats,
+    drawdown_tracker, signal_quality_score, detect_problems, build_event_feed
+)
 
 st.set_page_config(
     page_title="Quantara",
@@ -311,12 +314,13 @@ if not load_error and not log.empty:
     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
 
 # ── Tabs ───────────────────────────────────────────────────────────────────────
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "📈  Paper Trader",
     "📊  Strategy Results", 
     "🏆  Auto Selection",
     "🤖  ML Analysis",
-    "💰  Performance"
+    "💰  Performance",
+    "📋  Recent Trading Events"
 ])
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -813,3 +817,89 @@ with tab5:
             use_container_width=True,
             hide_index=True,
         )
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TAB 6 — RECENT TRADING EVENTS
+# ══════════════════════════════════════════════════════════════════════════════
+with tab6:
+    if load_error or log.empty:
+        st.info("No paper trading data available.")
+    else:
+        segments = build_trade_segments(log)
+        summary = ticker_summary(segments, log)
+        events = build_event_feed(segments, summary, log)
+
+        st.markdown("<div class='q-label'>What's Happened to Your Portfolio</div>", unsafe_allow_html=True)
+
+        col_a, col_b, col_c = st.columns([2, 1, 1])
+        with col_a:
+            days_back = st.selectbox(
+                "Show events from",
+                options=[7, 14, 30, 90, 999],
+                format_func=lambda x: "All time" if x == 999 else f"Last {x} days",
+                index=1,
+            )
+        with col_b:
+            ticker_options = ["All Tickers"] + sorted(log["Ticker"].unique().tolist())
+            ticker_filter = st.selectbox("Filter by ticker", ticker_options)
+        with col_c:
+            sort_mode = st.selectbox("Sort by", ["Most Recent", "Severity"])
+
+        cutoff = pd.Timestamp.now() - pd.Timedelta(days=days_back)
+        filtered_events = [e for e in events if pd.Timestamp(e["Date"]) >= cutoff]
+        if ticker_filter != "All Tickers":
+            filtered_events = [e for e in filtered_events if e["Ticker"] == ticker_filter]
+        
+        if sort_mode == "Severity":
+            SEVERITY_ORDER = {"CRITICAL": 0, "NEGATIVE": 1, "WARNING": 2, "POSITIVE": 3, "NEUTRAL": 4}
+            filtered_events = sorted(
+                filtered_events,
+                key=lambda e: SEVERITY_ORDER.get(e["Severity"], 5)
+            )
+
+        st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+
+        SEVERITY_COLORS = {
+            "CRITICAL": "#e05252",
+            "NEGATIVE": "#e05252",
+            "POSITIVE": "#69f0ae",
+            "WARNING": "#fbbf24",
+            "NEUTRAL": "#475569",
+        }
+        SEVERITY_ICONS = {
+            "CRITICAL": "🔴",
+            "NEGATIVE": "🔸",
+            "POSITIVE": "🟢",
+            "WARNING": "🟡",
+            "NEUTRAL": "⚪",
+        }
+
+        if not filtered_events:
+            st.markdown(
+                "<div style='text-align:center;padding:30px;color:#475569'>No events in this range.</div>",
+                unsafe_allow_html=True
+            )
+        else:
+            for e in filtered_events:
+                sev = e["Severity"]
+                color = SEVERITY_COLORS.get(sev, "#475569")
+                icon = SEVERITY_ICONS.get(sev, "⚪")
+                tc = TICKER_COLORS.get(e["Ticker"], "#94a3b8")
+                date_str = pd.Timestamp(e["Date"]).strftime("%b %d, %Y · %I:%M %p")
+
+                opacity = "1" if sev != "NEUTRAL" else "0.75"
+                border_weight = "1px" if sev in ["NEGATIVE", "NEUTRAL"] else "1.5px"
+
+                card_html = (
+                    f"<div style='background:#0f1629;border-left:{border_weight} solid {color};"
+                    f"border-top:1px solid #1e2d4a;border-right:1px solid #1e2d4a;"
+                    f"border-bottom:1px solid #1e2d4a;border-radius:8px;padding:14px 18px;"
+                    f"margin-bottom:8px;opacity:{opacity}'>"
+                    f"<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:6px'>"
+                    f"<span style='font-family:JetBrains Mono,monospace;font-size:13px;color:{tc};font-weight:600'>{icon} {e['Ticker']}</span>"
+                    f"<span style='font-family:JetBrains Mono,monospace;font-size:11px;color:#475569'>{date_str}</span>"
+                    f"</div>"
+                    f"<div style='font-size:13px;color:#cbd5e1;line-height:1.5'>{e['Message']}</div>"
+                    f"</div>"
+                )
+                st.markdown(card_html, unsafe_allow_html=True)
