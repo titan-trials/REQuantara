@@ -20,14 +20,14 @@ def build_features(df):
     df = compute_bollinger_bands(df)
     
     close = df["Close"].squeeze()
+    high = df["High"].squeeze()
+    low = df["Low"].squeeze()
     
     # Existing features
     df["EMA_gap"] = df["EMA_20"].squeeze() - df["EMA_50"].squeeze()
     df["BB_position"] = (close - df["Lower"].squeeze()) / (df["Upper"].squeeze() - df["Lower"].squeeze())
     df["Momentum_5"] = close.pct_change(5)
     df["Momentum_10"] = close.pct_change(10)
-    
-    # New features
     df["Momentum_20"] = close.pct_change(20)
     df["Momentum_30"] = close.pct_change(30)
     df["RSI_slope"] = df["RSI"].diff(3)
@@ -37,7 +37,31 @@ def build_features(df):
     df["Price_vs_SMA20"] = (close - df["SMA_20"].squeeze()) / df["SMA_20"].squeeze()
     df["Price_vs_SMA50"] = (close - df["SMA_50"].squeeze()) / df["SMA_50"].squeeze()
     df["BB_width"] = (df["Upper"].squeeze() - df["Lower"].squeeze()) / df["BB_SMA"].squeeze()
-    
+
+    # Momentum features 
+    # Momentum acceleration: is 10-day momentum itself increasing or decreasing?
+    mom_10 = close.pct_change(10)
+    df["Mom_accel"] = mom_10 - mom_10.shift(5)
+
+    # ADX_14: trend strength, direction-agnostic
+    prev_close = close.shift(1)
+    tr = pd.concat([
+        high - low,
+        (high - prev_close).abs(),
+        (low - prev_close).abs()
+    ], axis=1).max(axis=1)
+
+    up_move = high.diff()
+    down_move = -low.diff()
+    plus_dm = up_move.where((up_move > down_move) & (up_move > 0), 0.0)
+    minus_dm = down_move.where((down_move > up_move) & (down_move > 0), 0.0)
+
+    atr = tr.rolling(14).mean()
+    plus_di = 100 * (plus_dm.rolling(14).mean() / atr)
+    minus_di = 100 * (minus_dm.rolling(14).mean() / atr)
+    dx = 100 * (plus_di - minus_di).abs() / (plus_di + minus_di)
+    df["ADX_14"] = dx.rolling(14).mean()
+
     return df
 
 def build_target(df):
@@ -55,7 +79,7 @@ def run_ml_strategy(ticker, start, end, initial_capital, stop_loss, position_siz
     "EMA_gap", "RSI", "BB_position", "Momentum_5", "Momentum_10",
     "Momentum_20", "Momentum_30", "RSI_slope", "Volatility_10",
     "Volatility_20", "SMA_gap", "Price_vs_SMA20", "Price_vs_SMA50",
-    "BB_width"
+    "BB_width", "Mom_accel", "ADX_14"
 ]
     
     X = df[feature_cols]
@@ -105,7 +129,7 @@ def run_rf_strategy(ticker, start, end, initial_capital, stop_loss, position_siz
     "EMA_gap", "RSI", "BB_position", "Momentum_5", "Momentum_10",
     "Momentum_20", "Momentum_30", "RSI_slope", "Volatility_10",
     "Volatility_20", "SMA_gap", "Price_vs_SMA20", "Price_vs_SMA50",
-    "BB_width"
+    "BB_width", "Mom_accel", "ADX_14"
 ]
     
     X = df[feature_cols]
