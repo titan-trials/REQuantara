@@ -534,6 +534,11 @@ Integration section above).
   - Revisit weekly signal quality with more data or rolling window
   - Quantara NN merger: separate daily (this project) and intraday (NN) systems, unified
     dashboard, SQLite when going live, fix Alpaca NN position sizing bug
+  - Momentum Fix:
+    - Ended up runing a Streak based system. The system works in that you have a stock close higher than it did on a previous day so
+    - So much so that it makes a streak of days where it closed higher (or lower) than yesterday. Then we run a ADX and momentum accel. checks to see 
+    - how strong the stock really is in terms of explosive growth over X days. 
+  
 
 ---
 
