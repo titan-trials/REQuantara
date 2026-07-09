@@ -1,8 +1,10 @@
 import streamlit as st
+import os
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
+from alpaca.trading.client import TradingClient
 from evaluation.performance import (
     build_trade_segments, ticker_summary, win_loss_stats,
     drawdown_tracker, signal_quality_score, detect_problems, build_event_feed
@@ -14,6 +16,9 @@ st.set_page_config(
     page_icon="⚡",
     initial_sidebar_state="collapsed"
 )
+
+from streamlit_autorefresh import st_autorefresh
+st_autorefresh(interval=60000, key="live_refresh")
 
 st.markdown("""
 <style>
@@ -181,6 +186,21 @@ def load_log():
     df["Price"] = pd.to_numeric(df["Price"], errors="coerce")
     return df.sort_values("Timestamp")
 
+# ── Alpaca Loader ───────────────────────────────────────────────────────────────────
+@st.cache_data(ttl=60)
+def load_alpaca_account():
+    try:
+        client = TradingClient(
+            os.environ.get("ALPACA_KEY"),
+            os.environ.get("ALPACA_SECRET"),
+            paper=True
+        )
+        account = client.get_account()
+        positions = client.get_all_positions()
+        return account, positions
+    except Exception as e:
+        return None, []
+
 # ── Header ─────────────────────────────────────────────────────────────────────
 st.markdown("""
 <div style='display:flex;align-items:center;justify-content:space-between;
@@ -258,59 +278,84 @@ if not load_error and not log.empty:
 
     st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
 
-    # Portfolio summary row
-    st.markdown("<div class='q-label'>Portfolio Summary</div>", unsafe_allow_html=True)
-    
-    total_pnl = sum(
-        ((latest[latest["Ticker"] == t]["Price"].values[0] - ENTRY_PRICES[t]) / ENTRY_PRICES[t]) * 2000
-        for t in ENTRY_PRICES if t in latest["Ticker"].values
-    )
-    total_value = 10000 + total_pnl
-    total_return = (total_pnl / 10000) * 100
-    
-    ticker_returns = {
-        t: ((latest[latest["Ticker"] == t]["Price"].values[0] - ENTRY_PRICES[t]) / ENTRY_PRICES[t]) * 100
-        for t in ENTRY_PRICES if t in latest["Ticker"].values
-    }
-    best = max(ticker_returns, key=ticker_returns.get)
-    worst = min(ticker_returns, key=ticker_returns.get)
-    
-    pnl_color = "#69f0ae" if total_pnl >= 0 else "#e05252"
-    pnl_prefix = "+" if total_pnl >= 0 else ""
-    
-    c1, c2, c3, c4, c5 = st.columns(5)
-    c1.markdown(f"""
-    <div style='background:#0f1629;border:1px solid #1e2d4a;border-radius:10px;padding:16px 20px'>
-        <div class='q-label'>Portfolio Value</div>
-        <div style='font-family:JetBrains Mono,monospace;font-size:1.4rem;color:#e2e8f0;font-weight:500'>${total_value:,.0f}</div>
-    </div>""", unsafe_allow_html=True)
-    
-    c2.markdown(f"""
-    <div style='background:#0f1629;border:1px solid #1e2d4a;border-radius:10px;padding:16px 20px'>
-        <div class='q-label'>Total P&L</div>
-        <div style='font-family:JetBrains Mono,monospace;font-size:1.4rem;color:{pnl_color};font-weight:500'>{pnl_prefix}${total_pnl:,.0f}</div>
-    </div>""", unsafe_allow_html=True)
-    
-    c3.markdown(f"""
-    <div style='background:#0f1629;border:1px solid #1e2d4a;border-radius:10px;padding:16px 20px'>
-        <div class='q-label'>Total Return</div>
-        <div style='font-family:JetBrains Mono,monospace;font-size:1.4rem;color:{pnl_color};font-weight:500'>{pnl_prefix}{total_return:.1f}%</div>
-    </div>""", unsafe_allow_html=True)
-    
-    c4.markdown(f"""
-    <div style='background:#0f1629;border:1px solid #1e2d4a;border-radius:10px;padding:16px 20px'>
-        <div class='q-label'>Best Performer</div>
-        <div style='font-family:JetBrains Mono,monospace;font-size:1.4rem;color:#69f0ae;font-weight:500'>{best}</div>
-        <div style='font-size:11px;color:#69f0ae'>+{ticker_returns[best]:.1f}%</div>
-    </div>""", unsafe_allow_html=True)
-    
-    c5.markdown(f"""
-    <div style='background:#0f1629;border:1px solid #1e2d4a;border-radius:10px;padding:16px 20px'>
-        <div class='q-label'>Worst Performer</div>
-        <div style='font-family:JetBrains Mono,monospace;font-size:1.4rem;color:#e05252;font-weight:500'>{worst}</div>
-        <div style='font-size:11px;color:#e05252'>{ticker_returns[worst]:.1f}%</div>
-    </div>""", unsafe_allow_html=True)
-    
+    # ── Live Alpaca Portfolio Summary ─────────────────────────────────────
+    st.markdown("<div class='q-label'>Live Portfolio</div>", unsafe_allow_html=True)
+
+    account, positions = load_alpaca_account()
+
+    if account:
+        port_value = float(account.portfolio_value)
+        cash = float(account.cash)
+        equity = float(account.equity)
+        last_equity = float(account.last_equity)
+        today_pnl = equity - last_equity
+        total_pnl = equity - 10000
+        total_return = (total_pnl / 10000) * 100
+
+        pnl_color = "#69f0ae" if total_pnl >= 0 else "#e05252"
+        today_color = "#69f0ae" if today_pnl >= 0 else "#e05252"
+        pnl_prefix = "+" if total_pnl >= 0 else ""
+        today_prefix = "+" if today_pnl >= 0 else ""
+
+        c1, c2, c3, c4, c5 = st.columns(5)
+        c1.markdown(f"""
+        <div style='background:#0f1629;border:1px solid #1e2d4a;border-radius:10px;padding:16px 20px'>
+            <div class='q-label'>Portfolio Value</div>
+            <div style='font-family:JetBrains Mono,monospace;font-size:1.4rem;color:#e2e8f0;font-weight:500'>${port_value:,.2f}</div>
+            <div style='font-size:11px;color:#475569;margin-top:4px'>Live · Alpaca</div>
+        </div>""", unsafe_allow_html=True)
+
+        c2.markdown(f"""
+        <div style='background:#0f1629;border:1px solid #1e2d4a;border-radius:10px;padding:16px 20px'>
+            <div class='q-label'>Total P&L</div>
+            <div style='font-family:JetBrains Mono,monospace;font-size:1.4rem;color:{pnl_color};font-weight:500'>{pnl_prefix}${total_pnl:,.2f}</div>
+            <div style='font-size:11px;color:#475569;margin-top:4px'>vs $10,000 start</div>
+        </div>""", unsafe_allow_html=True)
+
+        c3.markdown(f"""
+        <div style='background:#0f1629;border:1px solid #1e2d4a;border-radius:10px;padding:16px 20px'>
+            <div class='q-label'>Total Return</div>
+            <div style='font-family:JetBrains Mono,monospace;font-size:1.4rem;color:{pnl_color};font-weight:500'>{pnl_prefix}{total_return:.2f}%</div>
+            <div style='font-size:11px;color:#475569;margin-top:4px'>Since Apr 29</div>
+        </div>""", unsafe_allow_html=True)
+
+        c4.markdown(f"""
+        <div style='background:#0f1629;border:1px solid #1e2d4a;border-radius:10px;padding:16px 20px'>
+            <div class='q-label'>Today's P&L</div>
+            <div style='font-family:JetBrains Mono,monospace;font-size:1.4rem;color:{today_color};font-weight:500'>{today_prefix}${today_pnl:,.2f}</div>
+            <div style='font-size:11px;color:#475569;margin-top:4px'>vs yesterday close</div>
+        </div>""", unsafe_allow_html=True)
+
+        buying_power = float(account.buying_power)
+        c5.markdown(f"""
+        <div style='background:#0f1629;border:1px solid #1e2d4a;border-radius:10px;padding:16px 20px'>
+            <div class='q-label'>Buying Power</div>
+            <div style='font-family:JetBrains Mono,monospace;font-size:1.4rem;color:#e2e8f0;font-weight:500'>${buying_power:,.2f}</div>
+            <div style='font-size:11px;color:#475569;margin-top:4px'>Available to trade</div>
+        </div>""", unsafe_allow_html=True)
+
+        st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+
+        # Open positions row
+        if positions:
+            st.markdown("<div class='q-label'>Open Positions</div>", unsafe_allow_html=True)
+            pos_cols = st.columns(len(positions))
+            for col, p in zip(pos_cols, positions):
+                upl = float(p.unrealized_pl)
+                uplpct = float(p.unrealized_plpc) * 100
+                pc = "#69f0ae" if upl >= 0 else "#e05252"
+                prefix = "+" if upl >= 0 else ""
+                tc = TICKER_COLORS.get(p.symbol, "#94a3b8")
+                col.markdown(f"""
+                <div style='background:#0f1629;border:1px solid #1e2d4a;border-radius:10px;padding:14px 16px;text-align:center'>
+                    <div style='font-family:JetBrains Mono,monospace;font-size:13px;color:{tc};font-weight:600;letter-spacing:1px'>{p.symbol}</div>
+                    <div style='font-family:JetBrains Mono,monospace;font-size:13px;color:#e2e8f0;margin-top:4px'>${float(p.current_price):.2f}</div>
+                    <div style='font-size:11px;color:{pc};margin-top:4px'>{prefix}${upl:.2f} ({prefix}{uplpct:.1f}%)</div>
+                    <div style='font-size:10px;color:#475569;margin-top:4px'>entry ${float(p.avg_entry_price):.2f} · {float(p.qty):.4f} sh</div>
+                </div>""", unsafe_allow_html=True)
+    else:
+        st.warning("Could not connect to Alpaca — showing cached data only.")
+
     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
 
 # ── Tabs ───────────────────────────────────────────────────────────────────────
@@ -330,38 +375,6 @@ with tab1:
     if load_error or log.empty:
         st.info("No paper trading data available.")
     else:
-        # Performance since entry
-        st.markdown("<div class='q-label'>Performance Since Entry (Apr 29)</div>",
-                    unsafe_allow_html=True)
-        
-        latest_prices = log.groupby("Ticker")["Price"].last()
-        perf_data = []
-        for ticker, entry in ENTRY_PRICES.items():
-            if ticker in latest_prices.index:
-                current = latest_prices[ticker]
-                pnl_pct = ((current - entry) / entry) * 100
-                pnl_dollar = (current - entry) / entry * 2000
-                perf_data.append({
-                    "Ticker": ticker,
-                    "Entry": entry,
-                    "Current": current,
-                    "Return %": pnl_pct,
-                    "P&L ($2k position)": pnl_dollar
-                })
-        
-        perf_df = pd.DataFrame(perf_data)
-        
-        cols = st.columns(5)
-        for col, (_, row) in zip(cols, perf_df.iterrows()):
-            pnl = row["Return %"]
-            color = "#69f0ae" if pnl >= 0 else "#e05252"
-            prefix = "+" if pnl >= 0 else ""
-            col.metric(
-                row["Ticker"],
-                f"{prefix}{pnl:.1f}%",
-                f"${row['P&L ($2k position)']:+.0f}"
-            )
-        
         st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
 
         # Price chart
