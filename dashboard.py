@@ -650,12 +650,12 @@ with tab4:
 
     st.markdown("""
     <div class='q-card' style='margin-top:4px'>
-        <div class='q-label'>14 Engineered Features</div>
+        <div class='q-label'>16 Engineered Features</div>
         <div style='font-family:JetBrains Mono,monospace;font-size:11px;
                     color:#94a3b8;line-height:2.2;letter-spacing:0.5px'>
             EMA_gap · RSI · BB_position · Momentum_5 · Momentum_10 · Momentum_20 · 
             Momentum_30 · RSI_slope · Volatility_10 · Volatility_20 · SMA_gap · 
-            Price_vs_SMA20 · Price_vs_SMA50 · BB_width
+            Price_vs_SMA20 · Price_vs_SMA50 · BB_width · Mom_accel · ADX_14
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -674,7 +674,7 @@ with tab5:
         stats = win_loss_stats(segments)
         drawdown = drawdown_tracker(log)
         quality = signal_quality_score(log)
-        problems = detect_problems(summary, drawdown, quality)
+        problems = detect_problems(summary, drawdown, quality, log)
 
         # ── Problem detection alerts (grouped by ticker) ─────────────────
         st.markdown("<div class='q-label'>System Alerts</div>", unsafe_allow_html=True)
@@ -699,10 +699,21 @@ with tab5:
             worst_sev = "CRITICAL" if any(f["Severity"] == "CRITICAL" for f in flags) else "WARNING"
             border_color = sev_color[worst_sev]
 
-            lines = "".join(
-                f"<div style='padding:6px 0 6px 8px;border-left:2px solid {sev_color[f['Severity']]};margin-bottom:4px;font-size:12px;color:#cbd5e1'>{sev_icon[f['Severity']]} {f['Message']}</div>"
-                for f in flags
-            )
+            def render_line(f):
+                color = sev_color[f["Severity"]]
+                icon = sev_icon[f["Severity"]]
+                when = f.get("When")
+                when_str = pd.Timestamp(when).strftime("%b %d, %Y") if when is not None else ""
+                detail = f.get("Detail", "")
+                date_html = (f"<span style='font-family:JetBrains Mono,monospace;font-size:10px;"
+                             f"color:#475569;margin-left:10px'>{when_str}</span>") if when_str else ""
+                detail_html = (f"<div style='font-size:11px;color:#64748b;margin-top:4px;"
+                               f"line-height:1.4'>{detail}</div>") if detail else ""
+                return (f"<div style='padding:8px 0 8px 10px;border-left:2px solid {color};margin-bottom:8px'>"
+                        f"<div style='font-size:12px;color:#cbd5e1'>{icon} {f['Message']}{date_html}</div>"
+                        f"{detail_html}</div>")
+
+            lines = "".join(render_line(f) for f in flags)
 
             card_html = f"<div style='background:#0f1629;border:1px solid {border_color}33;border-radius:10px;padding:14px 18px;margin-bottom:10px'><div style='display:flex;align-items:center;gap:8px;margin-bottom:8px'><span style='font-family:JetBrains Mono,monospace;font-size:14px;color:{tc};font-weight:600;letter-spacing:1px'>{ticker}</span><span>{icons}</span></div>{lines}</div>"
             st.markdown(card_html, unsafe_allow_html=True)

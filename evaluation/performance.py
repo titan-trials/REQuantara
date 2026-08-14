@@ -1,4 +1,6 @@
 import pandas as pd
+from config import STOP_LOSS
+
 KNOWN_EXIT_REASON_OVERRIDES = {
     ("NVDA", "2026-06-24 22:13:42"): "STOP_LOSS",
 }
@@ -252,57 +254,88 @@ def signal_quality_weekly(log: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(results)
 
 
-def detect_problems(summary, drawdown, quality, stop_loss=0.05):
+def detect_problems(summary, drawdown, quality, log, stop_loss=STOP_LOSS):
     """
     Scans ticker-level performance data and flags issues in plain English.
-    Returns a list of dicts: {Ticker, Severity, Message}
+
+    Each flag carries temporal context, but the three check types have
+    genuinely different time semantics and are dated accordingly:
+      - strategy switches: discrete dated events that can recur
+      - drawdown breach:   a current condition, dated by when the peak was set
+      - signal accuracy:   a rolling aggregate over a date range
+
+    Returns list of dicts: {Ticker, Severity, Message, When, Detail}
     """
     flags = []
 
     for _, row in summary.iterrows():
         ticker = row["Ticker"]
+        tdf = log[log["Ticker"] == ticker].sort_values("Timestamp").reset_index(drop=True)
+        if tdf.empty:
+            continue
 
-        # Check 1 — strategy switching
-        if row["Switch_Flag"]:
+        latest_ts = tdf["Timestamp"].iloc[-1]
+
+        # --- Check 1: strategy switching (discrete, dated, recurring) ---
+        switches, prev = [], None
+        for _, r in tdf.iterrows():
+            if prev is not None and r["Strategy"] != prev:
+                switches.append((r["Timestamp"], prev, r["Strategy"]))
+            prev = r["Strategy"]
+
+        if switches:
+            last_ts = switches[-1][0]
+            recent = " · ".join(
+                f"{ts.strftime('%b %d')}: {a} → {b}" for ts, a, b in switches[-3:]
+            )
+            more = f" (+{len(switches) - 3} earlier)" if len(switches) > 3 else ""
             flags.append({
                 "Ticker": ticker,
                 "Severity": "WARNING",
-                "Message": f"{ticker} has switched strategy {row['Strategy_Switches']} time(s) — signal instability detected."
+                "Message": f"{ticker} has switched strategy {len(switches)} time(s) — signal instability detected.",
+                "When": last_ts,
+                "Detail": f"Most recent: {recent}{more}",
             })
 
-        # Check 2 — stop loss breach using current drawdown
+        # --- Check 2: drawdown past stop loss threshold (current condition) ---
         dd_row = drawdown[drawdown["Ticker"] == ticker]
         if not dd_row.empty:
             current_dd = dd_row["Current_Drawdown_Pct"].values[0]
             if current_dd <= -stop_loss * 100:
+                peak_date = pd.to_datetime(dd_row["Peak_Date"].values[0])
+                peak_price = dd_row["Peak_Price"].values[0]
+                days_since = (latest_ts - peak_date).days
                 flags.append({
                     "Ticker": ticker,
                     "Severity": "CRITICAL",
-                    "Message": f"{ticker} is down {current_dd:.1f}% from its peak — beyond the {stop_loss*100:.0f}% stop loss threshold."
+                    "Message": f"{ticker} is down {abs(current_dd):.1f}% from its peak — beyond the {stop_loss*100:.0f}% stop loss threshold.",
+                    "When": peak_date,
+                    "Detail": f"Peak ${peak_price:.2f} set {peak_date.strftime('%b %d, %Y')} · {days_since} days ago, still below it",
                 })
 
-        # Check 3 — signal accuracy below coin flip baseline
+        # --- Check 3: signal accuracy (rolling aggregate over a range) ---
         q_row = quality[quality["Ticker"] == ticker]
         if not q_row.empty:
             acc = q_row["Accuracy_Pct"].values[0]
             checked = q_row["Buy_Signals_Checked"].values[0]
-            if acc < 50 and checked >= 10:  # only flag if enough samples to be meaningful
+            if acc < 50 and checked >= 10:
+                first_ts = tdf["Timestamp"].iloc[0]
                 flags.append({
                     "Ticker": ticker,
                     "Severity": "WARNING",
-                    "Message": f"{ticker} signal accuracy is {acc:.1f}% on {checked} checked signals — worse than a coin flip."
+                    "Message": f"{ticker} signal accuracy is {acc:.1f}% on {checked} checked signals — worse than a coin flip.",
+                    "When": latest_ts,
+                    "Detail": f"Measured across {first_ts.strftime('%b %d')} – {latest_ts.strftime('%b %d, %Y')} · rolling, not a single event",
                 })
 
     if not flags:
         flags.append({
-            "Ticker": "—",
-            "Severity": "OK",
-            "Message": "No issues detected across all tickers."
+            "Ticker": "—", "Severity": "OK",
+            "Message": "No issues detected across all tickers.",
+            "When": None, "Detail": "",
         })
 
     return flags
-
-from config import STOP_LOSS
 
 def build_event_feed(segments: pd.DataFrame, summary: pd.DataFrame, log: pd.DataFrame) -> list:
     """
@@ -414,4 +447,4 @@ def reconcile_open_segments(segments, positions):
         row["PnL_Pct"] = (current - entry) / entry * 100
         rows.append(row)
 
-    return pd.DataFrame(rows)
+    return pd.DataFrame(rows) if rows else segments.iloc[0:0]
