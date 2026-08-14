@@ -11,23 +11,27 @@ what actually happened to the money and why.
 
 ---
 
-## Current State (as of Jun 27, 2026)
-- Versions 1-10 complete.
+## Current State (as of Aug 14, 2026)
+- Versions 1-11 complete.
 - Paper trader live, logging signals, executing Alpaca orders automatically.
 - Scheduler runs daily at 9PM UTC (2PM PDT) on weekdays via GitHub Actions.
-- Alpaca paper trading account: $10,000.
-- Live stop loss enforcement CONFIRMED WORKING — fired correctly on NVDA Jun 24, 2026
-  (sold at -7.7% from real Alpaca entry $216.72, realized -$123). NVDA completed a full
-  exit/re-entry cycle and is trading normally since.
-- CSV now logs what Alpaca actually executed on stop loss days, not just the model's
-  opinion — see "Stop Loss CSV Accuracy Fix" below.
-- `FEATURE_COLS` centralized as a single constant in `ml_signal.py` (16 features:
-  original 14 + Mom_accel + ADX_14). `paper_trader.py` imports and uses the same
-  constant — no more separate, driftable copies of the feature list.
-- Dashboard has 6 tabs: Paper Trader, Strategy Results, Auto Selection, ML Analysis,
-  Performance, Recent Trading Events.
-- TSLA, JPM, IBM on SELL/HOLD as of last check (Jun 26). NVDA and AAPL hold open
-  positions.
+- **Account: $12,010 equity, +20.10% since Apr 29 inception.**
+- **Benchmark: equal-weight buy & hold of the same 5 tickers over the same period
+  returned +4.48%. Quantara is beating it by +15.62 points** (roughly +6 pts after
+  adjusting for the leverage that was running until Aug 14 — see Version 11).
+- Stop loss confirmed working across three live triggers (NVDA Jun 24, TSLA Jul 21,
+  AAPL Aug 3). Fires correctly on gradual declines; overshoots on overnight gaps,
+  which is structural and not fixable at the threshold level (see Version 11).
+- `POSITION_SIZE` reduced 0.50 → 0.20 on Aug 14. The old value was running the account
+  at ~1.91x leverage with ~$10.9k of margin debt. Existing oversized positions unwind
+  naturally as each cycles out.
+- Orders are now verified after submission — Alpaca can accept then reject an order
+  moments later, which was silently creating phantom positions in the analytics.
+- Open trade segments reconcile against live Alpaca position data rather than trusting
+  CSV-derived estimates.
+- System alerts carry dates and context, not just a bare statement.
+- Dashboard has 6 tabs plus a live Alpaca portfolio row (value, P&L, today's P&L,
+  buying power, open positions) refreshing every 60s.
 
 ---
 
@@ -149,7 +153,7 @@ SLOW_WINDOW = 50
 EMA_FAST = 20
 EMA_SLOW = 50
 STOP_LOSS = 0.05
-POSITION_SIZE = 0.50
+POSITION_SIZE = 0.02
 INITIAL_CAPITAL = 10000
 
 # Alpaca (loaded from environment variables)
@@ -164,7 +168,11 @@ ALPACA_BASE_URL = "https://paper-api.alpaca.markets"
 - Paper trading account: $10,000
 - SDK: alpaca-py
 - Execution: MarketOrderRequest, TimeInForce.DAY
-- Position sizing: 50% of portfolio per ticker
+- Position sizing: 20% of portfolio per ticker (5 tickers × 20% = 100% invested, no
+  margin). Was 50%, which produced ~1.91x leverage and caused buying-power rejections.
+- Order verification: `submit_and_verify()` polls order status after submission,
+  because Alpaca can accept an order into the system and reject it seconds later.
+  A rejected order returns `(None, None)` so nothing is logged as executed.
 - Position check: skips BUY if position OR pending order exists (duplicate-order fix)
 - **Stop loss enforcement**: `check_stop_loss()` in `alpaca_executor.py` compares
   Alpaca's live `avg_entry_price` against current price before evaluating the model's
@@ -510,6 +518,122 @@ dollar-only language was judged more honest than presenting a fictional quantity
 
 ---
 
+## Version 11 — Live Readiness Audit (COMPLETE)
+Triggered by reviewing 3.5 months of accumulated data before considering real capital.
+Four findings, two of them significant.
+
+### Finding 1 — The account was running ~1.91x leverage (fixed)
+`POSITION_SIZE = 0.50` means 50% of *total portfolio value* per position. With four
+positions open simultaneously that's ~200% exposure, funded by Alpaca margin:
+
+Account equity: $12,010.34
+Total position market value: $22,907.63
+Implied margin debt: $10,897.29
+Effective leverage: 1.91x
+
+The negative "Cash" figure on the Alpaca dashboard — earlier dismissed as a display
+quirk and relabelled "Buying Power" — was margin debt the whole time. Roughly half the
+headline +20.10% return is leverage amplification; the delevered equivalent is ~+10.5%.
+
+Fixed by setting `POSITION_SIZE = 0.20`. Sizing rationale: the common "2% rule" is
+**risk per trade, not position size**. Position size = risk% ÷ stop distance%. With a
+5% nominal stop (≈9% in gap scenarios), 2% risk per trade implies a 20-22% position.
+Five tickers × 20% = exactly 100% invested, zero margin.
+
+### Finding 2 — Genuine outperformance vs buy & hold
+
+Equal-weight buy & hold, same 5 tickers, Apr 29 – Aug 13: +4.48%
+Quantara actual: +20.10%
+Outperformance: +15.62 pts
+Delevered equivalent: ~+10.5% (≈ +6 pts)
+
+Per-ticker B&H: NVDA +5.12%, TSLA **-12.90%**, AAPL +11.65%, JPM +17.25%, IBM +1.26%.
+The edge came from trading around TSLA's decline and sitting out IBM's mid-July
+collapse ($306 → $217). This is the first evidence that the system is doing something
+beyond tracking the market — a meaningful update from the July read, which found no
+such evidence.
+
+### Finding 3 — Rejected orders were logged as successful (fixed)
+TSLA's Jul 22 re-entry (14.4659 sh) was **rejected by Alpaca**, almost certainly for
+insufficient buying power given the 50% sizing. But `execute_signal()` only checked the
+return value of `submit_order()`, not the order's subsequent status — so the CSV logged
+it as `SIGNAL` and `build_trade_segments()` opened a phantom position at $378.93. The
+dashboard showed TSLA at **-13.57%** while Alpaca showed **+9.2%** from a real $311.49
+entry opened Jul 27.
+
+Two fixes:
+- `submit_and_verify()` in `alpaca_executor.py` — polls order status for ~10s after
+  submission, catching accept-then-reject. Rejected orders log nothing.
+- `reconcile_open_segments()` in `evaluation/performance.py` — for any segment still
+  marked OPEN, entry price and P&L are taken from Alpaca's live position rather than
+  the CSV. Segments Alpaca isn't actually holding get dropped. Self-correcting from
+  here on.
+
+**Related slippage finding:** the CSV logs the yfinance *close* at signal time, but
+Alpaca fills at the *next open*. TSLA's stop signal was $369.57; the actual fill was
+$376.06. All dashboard P&L figures are approximations that drift from Alpaca's real
+numbers — one reason `reconcile_open_segments()` matters.
+
+### Finding 4 — Stop loss behaviour, correctly characterised
+An earlier claim in this project that the stop "always fires 3-4 points late" was
+**wrong** — it measured against CSV close prices instead of Alpaca's real
+`avg_entry_price`. Corrected:
+
+TSLA (real entry $392.31): Jul 17 -0.32% → Jul 20 -2.92% → Jul 21 -5.80% TRIGGER ✓
+AAPL (real entry $340.08): Jul 30 -0.56% → Jul 31 -1.96% → Aug 03 -9.17% TRIGGER ✗
+
+TSLA behaved correctly. AAPL gapped over a weekend from -1.96% straight to -9.17%,
+skipping the threshold entirely. **The stop works on gradual declines and cannot work
+on gaps** — you trigger on a close and fill at the next open, so the gap always lands
+in that window regardless of where the threshold sits.
+
+**Lowering the threshold to 4% was evaluated and rejected.** Simulated against real
+Apr–Aug prices:
+
+| Threshold | Stops fired | Summed return |
+|---|---|---|
+| 3% | 9 | 26.50% |
+| 4% | 7 | 26.39% |
+| 5% | 4 | 25.47% |
+| 6% | 3 | 24.56% |
+
+4% beats 5% by 0.92 pts across five tickers and three months — noise, not edge. And
+critically, replaying AAPL's gap: **both 4% and 5% first trigger on the same day**,
+identical outcome. Separately, of 155 occasions a holding sat in the -4% to -5% band,
+49% recovered the next close and 51% fell further — a coin flip with no exploitable
+information. Threshold stays at 5%.
+
+**The only effective gap defense is position sizing.** AAPL's -9.17% gap cost -4.6% of
+equity at 50% sizing; at 20% the same gap costs -1.8%. Already addressed by Finding 1.
+
+### Evaluated and deliberately NOT adopted
+- **Resting stop orders at Alpaca** (`StopOrderRequest` / bracket orders). Would give
+  true intraday stops independent of the scheduler, but Alpaca does not support stops
+  or brackets on **fractional shares**. Whole-share sizing sets an account-size floor —
+  at 20% sizing and JPM near $365, you'd need ~$1,825 just to buy one share of the
+  priciest name. Since the planned live account is $100–$1,000, fractional shares are
+  non-negotiable. Also adds stop lifecycle management (cancel before manual sells,
+  filter resting stops out of `get_pending_orders`, handle partial fills, static stops
+  that don't trail). Revisit only if the account grows substantially.
+- **VPS migration** (Kamatera box + DuckDNS already provisioned). Would enable
+  intraday stop polling, but that does **not** solve gaps — AAPL's move happened while
+  markets were closed. Recommended split when pursued: keep the daily signal run on
+  GitHub Actions (free, fails loudly, git commit flow already solved); move the
+  dashboard to the VPS first (immediate benefit — lets the repo go private, zero
+  trading risk), then Quantara NN when built, then intraday monitoring only if
+  intraday exits are genuinely wanted. Main risk: VPS cron dies silently where GitHub
+  Actions shows a red X. Uptime monitoring is a prerequisite.
+- **Note:** GitHub Actions auto-disables scheduled workflows after 60 days of repo
+  inactivity. Not yet an issue, but a real hazard for an unattended system.
+
+### System alerts now carry dates
+`detect_problems()` returns `When` and `Detail` per flag. The three check types are
+dated according to their actual semantics: strategy switches are discrete dated events
+with a recent-switch history, drawdown breaches are dated by when the peak was set plus
+days-since, and signal accuracy shows the date range it's measured over. Surfaced that
+IBM's drawdown alert had been firing continuously for 70+ days off a peak never
+actually held through — very different meaning from an alert that started yesterday.
+
 ## Alpaca Live Order History
 First real paper trades placed May 24, 2026: NVDA, AAPL, JPM (a duplicate NVDA order
 from manual testing was cancelled). TSLA and IBM have each sold off and re-entered
@@ -517,6 +641,7 @@ multiple times through normal signal flow since. NVDA completed its first full
 stop-loss-triggered exit on Jun 24, 2026 (sold at $200.04, -7.7% from entry $216.72,
 -$123 realized), then re-entered and has traded normally since under the now-corrected
 logging.
+
 
 ---
 
@@ -615,16 +740,21 @@ logging.
   - Stop Loss CSV Accuracy Fix — CSV now logs what Alpaca actually executed on stop
     loss days, not just the model's opinion
   - Recent Trading Events dashboard tab — narrated event feed with severity sort/filter
-### Version 11 (planned) — Not yet started
+### Version 11 ✅ — Live Readiness Audit
+  - Discovered and fixed ~1.91x leverage (POSITION_SIZE 0.50 → 0.20)
+  - Established buy & hold benchmark: +20.10% vs +4.48%, first real evidence of edge
+  - Fixed rejected-order logging + added live Alpaca position reconciliation
+  - Corrected stop loss characterisation; evaluated and rejected a 4% threshold
+  - Evaluated and deferred resting stop orders and VPS migration, with reasoning
+  - Dated system alerts
+### Version 12 (planned) — Not yet started
   - **TSLA/IBM momentum-misread fix — still UNRESOLVED.** Momentum-persistence
-    features didn't work (Version 10). Next angle should be different: a regime
-    classifier upstream of LR/RF, RSI/BB feature reweighting, or revisiting the
-    train/test split methodology — not more features in the same shape.
+    features didn't work (Version 10). Next angle: regime classifier upstream of
+    LR/RF, RSI/BB feature reweighting, or revisiting train/test split methodology.
+  - Treating momentum and volatility as *opportunity* rather than overextension
   - Strategy lock-in period to reduce AAPL/IBM switching instability
   - Revisit weekly signal quality with more data or a rolling window
-  - Quantara NN merger: separate daily (this project) and intraday (NN) systems,
-    unified dashboard, SQLite when going live, fix Alpaca NN position sizing bug
-
+  - Quantara NN merger: unified dashboard, SQLite when going live
 ---
 
 ## Related Project
