@@ -383,3 +383,35 @@ def build_event_feed(segments: pd.DataFrame, summary: pd.DataFrame, log: pd.Data
 
     events_df = pd.DataFrame(events).sort_values("Date", ascending=False)
     return events_df.to_dict("records")
+
+def reconcile_open_segments(segments, positions):
+    """
+    The CSV can believe a position is open when the real order was rejected,
+    or hold a stale entry price when the actual fill differed. This function reconciles the CSV's open segments with the actual Alpaca positions.
+    """
+    if not positions:
+        return segments
+
+    live = {p.symbol: p for p in positions}
+    rows = []
+
+    for _, row in segments.iterrows():
+        if row["Status"] != "OPEN":
+            rows.append(row)
+            continue
+
+        pos = live.get(row["Ticker"])
+        if pos is None:
+            continue  # CSV thinks it's open, Alpaca disagrees — drop it
+
+        entry = float(pos.avg_entry_price)
+        current = float(pos.current_price)
+
+        row = row.copy()
+        row["Entry_Price"] = entry
+        row["Exit_Price"] = current
+        row["PnL"] = float(pos.unrealized_pl)
+        row["PnL_Pct"] = (current - entry) / entry * 100
+        rows.append(row)
+
+    return pd.DataFrame(rows)

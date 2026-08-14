@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 from datetime import datetime
 from alpaca.trading.client import TradingClient
 from evaluation.performance import (
-    build_trade_segments, ticker_summary, win_loss_stats,
+    build_trade_segments, reconcile_open_segments, ticker_summary, win_loss_stats,
     drawdown_tracker, signal_quality_score, detect_problems, build_event_feed
 )
 
@@ -668,6 +668,8 @@ with tab5:
         st.info("No paper trading data available.")
     else:
         segments = build_trade_segments(log)
+        account, positions = load_alpaca_account()
+        segments = reconcile_open_segments(segments, positions)
         summary = ticker_summary(segments, log)
         stats = win_loss_stats(segments)
         drawdown = drawdown_tracker(log)
@@ -839,6 +841,8 @@ with tab6:
         st.info("No paper trading data available.")
     else:
         segments = build_trade_segments(log)
+        account, positions = load_alpaca_account()
+        segments = reconcile_open_segments(segments, positions)
         summary = ticker_summary(segments, log)
         events = build_event_feed(segments, summary, log)
 

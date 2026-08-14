@@ -1,3 +1,5 @@
+import time
+from alpaca.common.exceptions import APIError
 from alpaca.trading.client import TradingClient
 from alpaca.trading.requests import MarketOrderRequest
 from alpaca.trading.enums import OrderSide, TimeInForce
@@ -35,6 +37,30 @@ def check_stop_loss(position, current_price):
     drawdown = (current_price - entry_price) / entry_price
     return drawdown <= -STOP_LOSS
 
+def submit_and_verify(client, order_request, ticker, action_desc, checks=5, delay=2):
+    try:
+        order = client.submit_order(order_request)
+    except APIError as e:
+        print(f"[{ticker}] {action_desc} rejected at submission: {e}")
+        return None, False
+
+    latest = order
+    for _ in range(checks):
+        time.sleep(delay)
+        try:
+            latest = client.get_order_by_id(order.id)
+        except Exception:
+            break
+        status = str(latest.status).split(".")[-1].lower()
+        if status in ("rejected", "canceled", "expired"):
+            print(f"[{ticker}] {action_desc} {status.upper()} by Alpaca — no position change")
+            return latest, False
+        if status in ("filled", "partially_filled"):
+            return latest, True
+
+    # Still queued (normal for after-hours orders waiting on next open)
+    return latest, True
+
 
 def execute_signal(client, ticker, signal, price):
     """
@@ -57,7 +83,9 @@ def execute_signal(client, ticker, signal, price):
             side=OrderSide.SELL,
             time_in_force=TimeInForce.DAY
         )
-        result = client.submit_order(order)
+        result, ok = submit_and_verify(client, order, ticker, "STOP LOSS SELL")
+        if not ok:
+            return None, None
         print(f"[{ticker}] STOP LOSS ({STOP_LOSS*100:.0f}%) TRIGGERED — down {drawdown_pct:.2f}% from entry ${entry_price:.2f}. Force SELL {shares} shares @ ~${price:.2f}")
         return result, "STOP_LOSS"
 
@@ -76,7 +104,9 @@ def execute_signal(client, ticker, signal, price):
             side=OrderSide.BUY,
             time_in_force=TimeInForce.DAY
         )
-        result = client.submit_order(order)
+        result, ok = submit_and_verify(client, order, ticker, "BUY")
+        if not ok:
+            return None, None
         print(f"[{ticker}] BUY {shares} shares @ ~${price:.2f}")
         return result, "SIGNAL"
 
@@ -89,7 +119,9 @@ def execute_signal(client, ticker, signal, price):
             side=OrderSide.SELL,
             time_in_force=TimeInForce.DAY
         )
-        result = client.submit_order(order)
+        result, ok = submit_and_verify(client, order, ticker, "SELL")
+        if not ok:
+            return None, None
         print(f"[{ticker}] SELL {shares} shares @ ~${price:.2f}")
         return result, "SIGNAL"
 
