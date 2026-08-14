@@ -15,7 +15,7 @@ FEATURE_COLS = [
     "EMA_gap", "RSI", "BB_position", "Momentum_5", "Momentum_10",
     "Momentum_20", "Momentum_30", "RSI_slope", "Volatility_10",
     "Volatility_20", "SMA_gap", "Price_vs_SMA20", "Price_vs_SMA50",
-    "BB_width", "Mom_accel", "ADX_14"
+    "BB_width", "Mom_accel", "ADX_14", "Ret_vol_norm", "RSI_x_trend"
 ]
 
 def build_features(df):
@@ -68,6 +68,19 @@ def build_features(df):
     minus_di = 100 * (minus_dm.rolling(14).mean() / atr)
     dx = 100 * (plus_di - minus_di).abs() / (plus_di + minus_di)
     df["ADX_14"] = dx.rolling(14).mean()
+
+    # --- Path C: volatility-normalized return ---
+    # "How extreme is today's move relative to this stock's own recent normal?"
+    # Guard against near-zero vol producing exploding values.
+    vol20 = df["Volatility_20"].replace(0, pd.NA)
+    df["Ret_vol_norm"] = (close.pct_change() / vol20).clip(-10, 10)
+
+    # --- Path A: interaction features ---
+    # ADX scaled to roughly 0-1 so the products stay interpretable.
+    adx_norm = (df["ADX_14"] / 50).clip(0, 1)
+    # Large positive only when RSI is high AND trend is strong (riding a real trend).
+    # Near zero when ADX is low regardless of RSI (RSI isn't informative right now).
+    df["RSI_x_trend"] = (df["RSI"] - 50) * adx_norm
 
     return df
 
