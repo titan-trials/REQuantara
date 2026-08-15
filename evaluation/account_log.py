@@ -94,8 +94,14 @@ def _existing_order_ids():
 # equity + positions
 # ---------------------------------------------------------------------------
 
-def log_equity_and_positions(client):
-    """Snapshot account equity and every open position. Returns a status string."""
+def log_equity_and_positions(client, trading_date=None):
+    """Snapshot account equity and every open position. Returns a status string.
+
+    `trading_date` should be the date of the market data the run was based on,
+    passed down from paper_trader.get_trading_date(). Falling back to the system
+    clock puts rows on the wrong day whenever the run crosses UTC midnight -
+    which is how the 2026-08-15 (a Saturday) rows were produced.
+    """
     try:
         account = client.get_account()
         positions = client.get_all_positions()
@@ -104,8 +110,8 @@ def log_equity_and_positions(client):
         return "error"
 
     now = datetime.now()
-    timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
-    date = now.strftime("%Y-%m-%d")
+    date = trading_date or now.strftime("%Y-%m-%d")
+    timestamp = f"{date} {now.strftime('%H:%M:%S')}"
 
     equity = _f(getattr(account, "equity", None))
     last_equity = _f(getattr(account, "last_equity", None))
@@ -244,10 +250,15 @@ def _fetch_recent_orders(client, lookback_days):
 # entry point
 # ---------------------------------------------------------------------------
 
-def log_account_state(client, lookback_days=7):
-    """Log everything. Never raises - a logging failure must not stop trading."""
+def log_account_state(client, lookback_days=7, trading_date=None):
+    """Log everything. Never raises - a logging failure must not stop trading.
+
+    NOTE: `trading_date` deliberately does NOT apply to fills.csv. Those
+    timestamps come straight from Alpaca and are real event times for real
+    executions - they must never be rewritten.
+    """
     try:
-        equity_status = log_equity_and_positions(client)
+        equity_status = log_equity_and_positions(client, trading_date=trading_date)
         fills_status = log_fills(client, lookback_days=lookback_days)
         return {"equity": equity_status, "fills": fills_status}
     except Exception as e:

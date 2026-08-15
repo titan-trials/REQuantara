@@ -2,7 +2,32 @@ name: Quantara Paper Trader
 
 on:
   schedule:
-    - cron: '0 21 * * 1-5'
+    # 01:00 UTC, Tue-Sat. That is the EVENING of Mon-Fri in US market time:
+    #   summer (EDT): 9:00 PM ET  /  6:00 PM PT
+    #   winter (EST): 8:00 PM ET  /  5:00 PM PT
+    #
+    # Days are 2-6 (Tue-Sat), not 1-5, because 01:00 UTC falls on the calendar
+    # day AFTER the trading session it belongs to. Saturday 01:00 UTC is
+    # Friday evening in the US.
+    #
+    # Why this late, when the market closes at 4:00 PM ET:
+    #  - Post-market trading runs until 8:00 PM ET, and yfinance's daily close
+    #    is not settled until after it. The previous 21:00 UTC schedule fired
+    #    at 5:00 PM ET, mid-post-market. Two runs on 2026-08-14 (5:21 PM ET and
+    #    10:14 PM ET) disagreed by $2.82 on IBM and $2.31 on TSLA, and AAPL's
+    #    model signal flipped from BUY to SELL on the difference.
+    #  - Running later costs nothing. Orders are DAY market orders submitted
+    #    after hours, so they queue for the next open whether they are sent at
+    #    4:00 PM or 10:00 PM ET. The fill is identical; only the data improves.
+    #  - Cron has no daylight-saving awareness. A fixed UTC time shifts one
+    #    hour against the market twice a year, so the schedule must be correct
+    #    in BOTH seasons. Firing at the close in summer (20:00 UTC) would land
+    #    an hour BEFORE the close in winter, with the market still open.
+    #  - GitHub Actions frequently runs scheduled jobs 1-3 hours late. That
+    #    only pushes this later into the settled window, so it is harmless
+    #    here. It would NOT have been safe to rely on that delay to escape an
+    #    unsettled window.
+    - cron: '0 1 * * 2-6'
   workflow_dispatch:
 
 jobs:

@@ -417,6 +417,130 @@ $22,907.63 → correctly detected as 1.91x with $10,897.29 margin debt).
 curve, true live max drawdown, true live Sharpe, real slippage measurement (CSV signal
 price vs actual fill price), and an automatic buy & hold benchmark.**
 
+### ✅ FIRST LIVE NQ RUN — Aug 14 2026 (the measurement layer works)
+
+Three findings, all previously impossible to observe.
+
+**1 — The position-sizing fix, confirmed in a real order.** The scheduled 21:00 UTC run
+executed the *old remote* code (`POSITION_SIZE = 0.50` — the local fix had never been
+pushed). A manual run after the push executed the new code. Same ticker, same day,
+~$12,100 equity:
+
+```
+old code: NVDA buy 26.8561 sh x $225.30 = $6,051 = 50.0% of equity
+new code: NVDA buy 10.7665 sh x $225.16 = $2,424 = 20.0% of equity
+```
+
+**2 — Slippage measured for the first time.** `fills.csv` vs the signal price:
+
+| | Signalled (Aug 13) | Filled (Aug 14) | Difference |
+|---|---|---|---|
+| NVDA sell | $224.09 | $227.1603 | **+1.37%** in our favour |
+| AAPL sell | $302.25 | $306.4322 | **+1.38%** in our favour |
+
+Order lifecycle confirmed too: submitted 08:00 UTC (Alpaca releasing a queued
+after-hours order at the 04:00 ET pre-market open), filled 13:33 UTC = **09:33 ET,
+three minutes after the regular open**. That is the "signal at close, fill at next open"
+window where gaps land — now documented from real data instead of inferred.
+
+**3 — Leverage 0.93x, but position sizes still wrong.** No margin debt, but only because
+two positions are held instead of five:
+
+```
+JPM   $5,328.20 = 44.0% of equity   (target 20%)
+TSLA  $5,914.94 = 48.8% of equity   (target 20%)
+cash    $877.75
+```
+
+Both are legacy 0.50-era positions. **There is no rebalancing logic** — oversized
+positions only correct when they cycle out. TSLA's pending sell and NVDA's 20% re-entry
+resolve two; JPM stays at 44% until it sells.
+
+### ✅ Trading date vs wall-clock date (fixed)
+
+Logs were stamped with `datetime.now()` — the date the *script ran*, not the date of the
+*market data it acted on*. A manual run at 19:14 PT on Friday Aug 14 was 02:14 UTC on
+**Saturday Aug 15**, so Friday's closing prices were recorded on a Saturday. Every
+consumer in `performance.py` treats `Timestamp` as "which trading day is this row about"
+(sorting, weekly bucketing, drawdown dating), so this corrupted all of them.
+
+Fixed by `get_trading_date()` in `paper_trader.py`, which reads `df.index[-1]` from the
+market data and is threaded through `log_signals()` and `log_account_state()`. Date comes
+from the data; clock time still records when the job ran.
+
+**`fills.csv` is deliberately excluded** — those timestamps are real Alpaca event times
+for real executions and must never be rewritten. Existing 2026-08-15 rows in
+`paper_trading_log.csv`, `equity_log.csv` and `positions_log.csv` were corrected by hand.
+
+### ✅ Schedule moved off unsettled prices (fixed)
+
+Two runs on the same trading day, 5 hours apart, disagreed on every closing price:
+
+```
+            17:21 ET   22:14 ET     diff
+NVDA         225.30     225.16     -0.14
+TSLA         339.96     342.27     +2.31
+AAPL         305.26     305.93     +0.67
+JPM          363.11     362.84     -0.27
+IBM          237.14     234.32     -2.82
+```
+
+**The old `0 21 * * 1-5` fired at 5:00 PM ET — during post-market**, which runs to
+8:00 PM ET; yfinance's daily close is not settled until after it. AAPL's Logistic
+Regression signal **flipped from BUY to SELL on a $0.67 difference**, which separately
+says the model was sitting on its decision boundary that day.
+
+Now `0 1 * * 2-6` — 01:00 UTC, Tue–Sat:
+
+| | ET | PT |
+|---|---|---|
+| Summer (EDT) | 9:00 PM | 6:00 PM |
+| Winter (EST) | 8:00 PM | 5:00 PM |
+
+Tue–Sat because 01:00 UTC falls on the calendar day *after* the session it belongs to.
+Reasoning:
+- **Running later costs nothing.** DAY market orders submitted after hours queue for the
+  next open whether sent at 4 PM or 10 PM ET. The fill is identical; only data improves.
+- **Cron has no DST awareness**, so the schedule must be right in both seasons. Firing at
+  the close in summer (20:00 UTC) would land at 3:00 PM ET in winter — an hour *before*
+  the close, market still open.
+- **GitHub Actions runs scheduled jobs 1–3 hours late**, which only pushes this deeper
+  into the settled window. Relying on that delay to escape an *unsettled* window would
+  not be safe, since a fast run would get bad data.
+
+### ✅ Two fail-OPEN bugs in `alpaca_executor.py` (fixed)
+
+Both could place a duplicate order or skip a stop loss.
+
+**Bug A — the duplicate-order guard never matched anything.**
+```python
+str(o.status) in ["accepted", "pending_new", "new"]
+```
+alpaca-py renders enums as `OrderStatus.ACCEPTED`, so this compared
+`"OrderStatus.ACCEPTED"` against `"accepted"` and matched nothing.
+`get_pending_orders()` returned `[]` regardless of what was queued.
+`submit_and_verify()` in the *same file* had always normalised correctly with
+`.split(".")[-1].lower()` — the two functions disagreed.
+
+Now uses that normalisation, and the check is **inverted**: terminal statuses are listed
+(`filled`, `canceled`, `expired`, `rejected`, `replaced`, `done_for_day`) and everything
+else counts as live. An unrecognised or newly-added Alpaca status therefore errs toward
+*skipping* a buy — one missed entry — rather than duplicating a position.
+
+**Bug B — bare excepts made failure look like "nothing there."** `get_position()`
+returned `None` and `get_pending_orders()` returned `[]` on *any* exception, so a network
+blip was indistinguishable from "you hold nothing" and "nothing is queued." That both
+skips the stop loss on a position you really hold *and* lets a duplicate BUY through.
+
+Now `get_position()` returns `None` only for a genuine 404 "position does not exist" and
+raises otherwise; `get_pending_orders()` raises on failure and the BUY branch **fails
+closed** — if it cannot confirm nothing is queued, it does not buy.
+
+**Also restructured:** pending orders used to be fetched at the top of `execute_signal()`,
+*before* the stop-loss check, so an orders-endpoint failure aborted the function and
+silently skipped a stop loss. They are now fetched only inside the BUY branch. **A
+failure can no longer block a stop loss.**
+
 ### ⚠️ The Version 12 override did not implement the rule it described
 
 Found by synthetic-price testing while building the walk-forward harness. Two bugs,
@@ -771,6 +895,9 @@ python test_engine_synthetic.py          # 18 assertions on run_backtest
 python test_auto_selector_fallback.py    # 7 assertions on selection failure handling
 python test_account_log.py               # 22 assertions on the Alpaca measurement layer
 python test_momentum_override.py         # 13 assertions on the override rule
+python test_trading_date.py              # 14 assertions on trading-date logging
+python test_alpaca_executor.py           # 20 assertions on the live order guards
+                                         # -- 94 assertions total, all network-free --
 
 # Walk-forward validation of the momentum override (needs network, ~few minutes)
 python override_walk_forward.py
@@ -783,7 +910,9 @@ python override_walk_forward.py
 REQuantara/
 ├── .github/
 │   └── workflows/
-│       └── paper_trader.yml      # GitHub Actions - runs daily 9PM UTC
+│       └── paper_trader.yml      # GitHub Actions - '0 1 * * 2-6' = 01:00 UTC Tue-Sat
+│                                 # = 9PM ET summer / 8PM ET winter (V14; was 21:00 UTC,
+│                                 # which fired mid post-market on unsettled prices)
 │                                 # commit step: commit local changes BEFORE
 │                                 # pull --rebase, then push (avoids unstaged-
 │                                 # changes rebase failures)
@@ -867,6 +996,10 @@ REQuantara/
 │                                 # (fake client, incl. the real V11 leverage scenario)
 ├── test_momentum_override.py     # V14: 13 assertions pinning the override rule to its
 │                                 # documented behaviour, incl. both V12 bug regressions
+├── test_trading_date.py          # V14: 14 assertions - trading date comes from
+│                                 # market data, not the wall clock
+├── test_alpaca_executor.py       # V14: 20 assertions - order-status normalization
+│                                 # and fail-closed duplicate-order guard
 ├── test_auto_selector_fallback.py# V13: 7 network-free assertions on auto_select's
 │                                 # failure handling and known-good fallback
 └── CONTEXT.md                    # this file
@@ -1522,6 +1655,20 @@ logging.
 
 ## Known Issues / Technical Debt
 
+### Opened in Version 14 (NOT yet fixed)
+- **No rebalancing logic.** Position sizing applies only at entry, so a position opened
+  under the old 0.50 regime stays oversized until it cycles out. JPM is currently 44% of
+  equity against a 20% target. Live confirmed Aug 14 2026.
+- **`get_recent_data()` fetches a fixed 300 calendar days** regardless of what the
+  strategy needs. Combined with the live training-window bug below, this determines what
+  the live model sees.
+- **The buy & hold control arm in `override_walk_forward.py` records Sharpe and drawdown
+  but not total return**, so it cannot be compared to Version 11's return-based live
+  finding on equal terms.
+- **AAPL's LR signal flipped BUY -> SELL on a $0.67 price difference** (Aug 14, two runs
+  5 hours apart). The model was on its decision boundary. A hard 0/1 `predict()` hides
+  this; `predict_proba()` would expose it. Worth considering a confidence threshold.
+
 ### Opened in Version 13 (found during the correctness audit, NOT yet fixed)
 - **Live LR/RF models are trained on a stale window.** In `paper_trader.py`,
   `generate_current_signal()` fetches a 300-day lookback, fits the `StandardScaler` on
@@ -1652,9 +1799,19 @@ logging.
     models) and TSLA (both models); IBM REJECTS; NVDA REJECTS. V12 bugs found to be real
     but nearly immaterial on real data. ⚠️ Optimum sits at the edge of the parameter
     grid — unresolved, see Finding 5. Nothing shipped
-  - ⬜ **Resolve Finding 5** — re-run with wider parameters plus trailing-stop-only
-    control arms, to establish whether the RSI condition does any work at all
-  - ⬜ Confirm the account logger writes correctly on the first real Actions run
+  - ✅ **Resolved Finding 5** — Round 3 with control arms: buy & hold beats every LR/RF
+    baseline on Sharpe in all four windows. AAPL/RF and IBM/RF are the only configs that
+    beat it. The override was closing the gap to buy & hold by trading less
+  - ✅ **First live NQ run** — 20% sizing confirmed in a real order (26.8561 sh -> 10.7665
+    sh), slippage measured for the first time (+1.37% NVDA, +1.38% AAPL), leverage 0.93x
+    with JPM still sitting at 44% of equity
+  - ✅ Trading date now read from market data instead of `datetime.now()` — Friday's
+    prices no longer land on a Saturday
+  - ✅ Schedule moved from `0 21 * * 1-5` (5 PM ET, mid post-market, unsettled prices)
+    to `0 1 * * 2-6` (9 PM ET summer / 8 PM ET winter — settled in both seasons)
+  - ✅ Two fail-OPEN bugs fixed in `alpaca_executor.py`: the duplicate-order guard never
+    matched any status, and bare excepts made an API failure look identical to "flat"
+  - ⬜ **No rebalancing logic** — JPM is stuck at 44% of equity until it cycles out
   - ⬜ Execution lag + transaction costs in `run_backtest`
   - ⬜ Portfolio-level backtest — no simulation of the deployed system currently exists
   - ⬜ Live LR training-window fix

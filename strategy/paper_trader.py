@@ -25,10 +25,37 @@ def get_recent_data(ticker, lookback_days=300):
     df = load_data(ticker, start, end)
     return df
 
-def log_signals(signals, log_file="results/paper_trading_log.csv"):
+def get_trading_date(df):
+    """The date of the last bar of market data, as YYYY-MM-DD.
+
+    This is the date the signals ACTUALLY describe. `datetime.now()` is the
+    date the script happened to run, which is not the same thing: the
+    scheduled job fires at 21:00 UTC and any manual run after ~20:00 ET rolls
+    past UTC midnight, stamping Friday's closing prices with Saturday's date.
+    That produced a phantom weekend trading day on 2026-08-15.
+
+    Returns None if the frame is empty, so callers can fall back.
+    """
+    if df is None or len(df) == 0:
+        return None
+    return df.index[-1].strftime("%Y-%m-%d")
+
+
+def log_signals(signals, log_file="results/paper_trading_log.csv", trading_date=None):
     os.makedirs("results", exist_ok=True)
     signals_df = pd.DataFrame(signals)
-    signals_df["Timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    # Date comes from the market data, clock time from the run. Every consumer
+    # in evaluation/performance.py already treats Timestamp as "which trading
+    # day is this row about" (sorting, weekly bucketing, drawdown dating), so
+    # this aligns the field with how it was always used. The time component is
+    # kept so you can still see when the job ran.
+    now = datetime.now()
+    if trading_date is None:
+        trading_date = now.strftime("%Y-%m-%d")
+        print("[paper_trader] WARNING: no market data date available, "
+              "falling back to the system clock for Timestamp")
+    signals_df["Timestamp"] = f"{trading_date} {now.strftime('%H:%M:%S')}"
     
     if os.path.exists(log_file):
         existing = pd.read_csv(log_file)
@@ -109,6 +136,7 @@ def run_paper_trader(tickers, start, end, initial_capital, stop_loss, position_s
     selections = auto_select(tickers, start, end, initial_capital, stop_loss, position_size)
 
     signals = []
+    trading_date = None
 
     for ticker in tickers:
         print(f"\n--- {ticker} ---")
@@ -117,6 +145,13 @@ def run_paper_trader(tickers, start, end, initial_capital, stop_loss, position_s
 
         # Fetch recent real data
         df_recent = get_recent_data(ticker)
+
+        # Take the trading date from the first ticker that returns data. All
+        # five share a market calendar, so any of them will do.
+        if trading_date is None:
+            trading_date = get_trading_date(df_recent)
+            if trading_date:
+                print(f"Trading date      : {trading_date}")
 
         # Generate today's signal using best strategy
         signal = generate_current_signal(df_recent, best_strategy, 
@@ -152,7 +187,7 @@ def run_paper_trader(tickers, start, end, initial_capital, stop_loss, position_s
             "Exit_Reason": exit_reason if exit_reason else ""
         })
 
-    log_signals(signals)
+    log_signals(signals, trading_date=trading_date)
 
     # Measure the account AFTER all orders for the day have been submitted, so
     # the snapshot reflects the state the trades actually left it in.
@@ -163,7 +198,7 @@ def run_paper_trader(tickers, start, end, initial_capital, stop_loss, position_s
     # affect trading - by this point every order is already submitted anyway.
     print(f"\n{'='*50}\nACCOUNT SNAPSHOT\n{'='*50}")
     try:
-        log_account_state(get_client())
+        log_account_state(get_client(), trading_date=trading_date)
     except Exception as e:
         print(f"[paper_trader] Account logging failed (trading unaffected): "
               f"{type(e).__name__}: {e}")
