@@ -20,7 +20,11 @@ from backtest.engine import run_backtest
 from evaluation.metrics import get_metrics
 from config import TICKERS, START, END, INITIAL_CAPITAL, STOP_LOSS
 
-POSITION_SIZE = 0.50   # match the 0.50 baseline for a fair comparison
+# Was hardcoded to 0.50 to match the then-current baseline. Now pulls the shared
+# constant. Both arms of the comparison inside this script use the same value, so
+# the A/B is still fair - but the absolute Sharpe numbers quoted in this file's
+# docstring were produced at 0.50 with whole-share flooring and will not reproduce.
+from config import BACKTEST_POSITION_SIZE as POSITION_SIZE
 TC = 0.0005            # ~5bps one-way
 
 

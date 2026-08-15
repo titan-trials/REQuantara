@@ -1,0 +1,40 @@
+{
+  "generated_at": "2026-08-14 10:09:53",
+  "assignments": {
+    "NVDA": {
+      "Best_Strategy": "EMA Crossover",
+      "Score": 1.7169,
+      "Sharpe": 1.152,
+      "Total_Return": 495.83,
+      "Max_Drawdown": -50.25
+    },
+    "TSLA": {
+      "Best_Strategy": "SMA Crossover",
+      "Score": 1.4049,
+      "Sharpe": 0.964,
+      "Total_Return": 402.38,
+      "Max_Drawdown": -60.63
+    },
+    "AAPL": {
+      "Best_Strategy": "Logistic Regression",
+      "Score": 1.2086,
+      "Sharpe": 1.168,
+      "Total_Return": 201.84,
+      "Max_Drawdown": -26.35
+    },
+    "JPM": {
+      "Best_Strategy": "SMA Crossover",
+      "Score": 0.8833,
+      "Sharpe": 0.9,
+      "Total_Return": 101.14,
+      "Max_Drawdown": -22.98
+    },
+    "IBM": {
+      "Best_Strategy": "Bollinger Bands",
+      "Score": 0.8276,
+      "Sharpe": 0.964,
+      "Total_Return": 32.56,
+      "Max_Drawdown": -6.49
+    }
+  }
+}

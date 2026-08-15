@@ -3,7 +3,7 @@ from alpaca.common.exceptions import APIError
 from alpaca.trading.client import TradingClient
 from alpaca.trading.requests import MarketOrderRequest
 from alpaca.trading.enums import OrderSide, TimeInForce
-from config import ALPACA_KEY, ALPACA_SECRET, POSITION_SIZE, STOP_LOSS
+from config import ALPACA_KEY, ALPACA_SECRET, LIVE_POSITION_SIZE, STOP_LOSS
 from strategy.ml_signal import build_features, build_target, FEATURE_COLS
 
 def get_client():
@@ -91,7 +91,10 @@ def execute_signal(client, ticker, signal, price):
 
     # BUY logic
     if signal == 1 and position is None and not pending:
-        dollar_amount = portfolio_value * POSITION_SIZE
+        # LIVE_POSITION_SIZE is a fraction of TOTAL account equity and all five
+        # tickers draw on the same pool, so this must stay at 1/len(TICKERS)
+        # or lower to avoid buying on margin. See config.py.
+        dollar_amount = portfolio_value * LIVE_POSITION_SIZE
         shares = round(dollar_amount / price, 4)
 
         if shares <= 0:

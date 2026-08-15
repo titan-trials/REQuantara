@@ -1,7 +1,13 @@
 """
-Momentum override: when the model says SELL while RSI is overbought AND the
-position is profitable, suspend the sell and hold with a trailing stop from
-the peak instead. Exit when price falls TRAIL% below the running peak.
+Momentum override - Version 12 single-window grid.
+
+SUPERSEDED by override_walk_forward.py. This script tests a single 50/50 split,
+which Version 10 and Version 12 both established is not sufficient evidence to
+act on. Kept because it is the script that produced the Version 12 results
+recorded in CONTEXT.md. For any new decision, use the walk-forward harness.
+
+The override rule itself now lives in strategy/momentum_override.py so the two
+scripts cannot drift apart.
 """
 import warnings; warnings.filterwarnings("ignore")
 import pandas as pd, numpy as np
@@ -12,35 +18,8 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import StandardScaler
 from backtest.engine import run_backtest
 from evaluation.metrics import get_metrics
-from config import TICKERS, START, END, INITIAL_CAPITAL, STOP_LOSS, POSITION_SIZE
-
-
-def apply_override(df, rsi_trigger, trail):
-    """Rewrites Signal in place. Returns count of days the override was active."""
-    sig = df["Signal"].values.copy()
-    rsi = df["RSI"].values
-    close = df["Close"].squeeze().values
-    in_form, peak, entry = False, 0.0, 0.0
-    active = 0
-
-    for i in range(1, len(sig)):
-        if in_form:
-            peak = max(peak, close[i])
-            if close[i] < peak * (1 - trail):
-                in_form = False          # trailing stop hit -> release
-            else:
-                sig[i] = 1               # hold
-                active += 1
-                continue
-        # enter the form: model wants out, RSI overbought, position profitable
-        if sig[i] == 0 and sig[i-1] == 1 and rsi[i] > rsi_trigger and close[i] > entry:
-            in_form, peak = True, close[i]
-            sig[i] = 1
-            active += 1
-        if sig[i] == 1 and sig[i-1] == 0:
-            entry = close[i]
-    df["Signal"] = sig
-    return active
+from config import TICKERS, START, END, INITIAL_CAPITAL, STOP_LOSS, BACKTEST_POSITION_SIZE
+from strategy.momentum_override import apply_override
 
 
 def run(ticker, model_name, rsi_trigger=None, trail=None):
@@ -60,7 +39,7 @@ def run(ticker, model_name, rsi_trigger=None, trail=None):
     d = df.iloc[mid:].copy(); d["Signal"] = pred
     n = apply_override(d, rsi_trigger, trail) if rsi_trigger else 0
     d["Position"] = d["Signal"].shift(1)
-    d = run_backtest(d, INITIAL_CAPITAL, STOP_LOSS, POSITION_SIZE)
+    d = run_backtest(d, INITIAL_CAPITAL, STOP_LOSS, BACKTEST_POSITION_SIZE)
     r = get_metrics(d, INITIAL_CAPITAL)
     return r["Sharpe_Ratio"], r["Total_Return"], r["Max_Drawdown"], n
 

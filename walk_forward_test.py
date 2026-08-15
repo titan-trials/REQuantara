@@ -15,7 +15,11 @@ from strategy.auto_selector import compute_composite_score
 
 INITIAL_CAPITAL = 10000
 STOP_LOSS = 0.05
-POSITION_SIZE = 0.50
+# Was hardcoded to 0.50. Now pulls the shared constant so this script can never
+# silently drift from the rest of the backtest suite. NOTE: any results from
+# this script recorded in CONTEXT.md before Aug 2026 were produced at 0.50 with
+# whole-share flooring and are NOT comparable to new runs.
+from config import BACKTEST_POSITION_SIZE as POSITION_SIZE
 FULL_START = "2015-01-01"
 FULL_END = "2024-01-01"
 

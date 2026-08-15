@@ -89,8 +89,12 @@ def build_target(df):
     df["Target"] = (close.shift(-1) > close).astype(int)
     return df
 
-def run_ml_strategy(ticker, start, end, initial_capital, stop_loss, position_size):
-    df = load_data(ticker, start, end)
+def run_ml_strategy(ticker, start, end, initial_capital, stop_loss, position_size, df=None):
+    # `df` lets callers pass a pre-loaded frame instead of forcing another
+    # yfinance download. auto_selector uses this to cut 6 downloads per ticker
+    # down to 2. Callers must pass a copy - build_features mutates in place.
+    if df is None:
+        df = load_data(ticker, start, end)
     df = build_features(df)
     df = build_target(df)
     df = df.dropna()
@@ -133,8 +137,10 @@ def run_ml_strategy(ticker, start, end, initial_capital, stop_loss, position_siz
     
     return df_test, metrics, model, FEATURE_COLS, scaler
 
-def run_rf_strategy(ticker, start, end, initial_capital, stop_loss, position_size):
-    df = load_data(ticker, start, end)
+def run_rf_strategy(ticker, start, end, initial_capital, stop_loss, position_size, df=None):
+    # See run_ml_strategy - optional pre-loaded frame, must be a copy.
+    if df is None:
+        df = load_data(ticker, start, end)
     df = build_features(df)
     df = build_target(df)
     df = df.dropna()

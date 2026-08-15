@@ -16,6 +16,7 @@ from evaluation.metrics import get_metrics
 from backtest.engine import run_backtest
 import os
 from strategy.alpaca_executor import get_client, execute_signal
+from evaluation.account_log import log_account_state
 
 
 def get_recent_data(ticker, lookback_days=300):
@@ -152,4 +153,19 @@ def run_paper_trader(tickers, start, end, initial_capital, stop_loss, position_s
         })
 
     log_signals(signals)
+
+    # Measure the account AFTER all orders for the day have been submitted, so
+    # the snapshot reflects the state the trades actually left it in.
+    #
+    # This is the only place in the project that records ground truth rather
+    # than reconstructing it from yfinance closes. It is wrapped defensively
+    # and on its own client because a measurement failure must never be able to
+    # affect trading - by this point every order is already submitted anyway.
+    print(f"\n{'='*50}\nACCOUNT SNAPSHOT\n{'='*50}")
+    try:
+        log_account_state(get_client())
+    except Exception as e:
+        print(f"[paper_trader] Account logging failed (trading unaffected): "
+              f"{type(e).__name__}: {e}")
+
     return pd.DataFrame(signals).set_index("Ticker")
