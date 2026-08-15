@@ -64,3 +64,31 @@ EXECUTION_LAG = 1
 
 # Portfolio
 INITIAL_CAPITAL = 10000  # Starting with $10,000
+# Fallback annual risk-free rate, used only if ^IRX cannot be fetched.
+# See evaluation/risk_free.py - the real time-varying rate is preferred,
+# because over 2015-2024 short rates went from ~0% to ~5% and no single
+# constant is right for both ends of that window.
+RISK_FREE_RATE_FALLBACK = 0.04
+
+# ---------------------------------------------------------------------------
+# SELECTION GUARDRAILS (Version 17)
+#
+# MAX_ACCEPTABLE_DRAWDOWN: a candidate whose BACKTESTED max drawdown is worse
+# than this is not eligible for live selection, however good its score. The
+# composite score weights drawdown at only 0.3 while raw return is unbounded,
+# so a strategy returning 1500% with a -74% drawdown scores 3.74 and wins
+# outright - despite -74% requiring a +285% recovery just to break even, and
+# despite almost nobody actually holding through it. Sharpe does not capture
+# this either: it measures volatility, not survivability.
+#
+# If NO candidate clears the bar, the selector falls back to the LOWEST
+# drawdown candidate and says so loudly, rather than silently taking the
+# highest score.
+#
+# ALLOW_BUY_AND_HOLD_LIVE: Buy & Hold is scored as a BENCHMARK on every run -
+# that comparison is the most useful number the selector produces. Whether it
+# should also be tradeable is a separate question, because live it has no stop
+# loss by definition. Set True only deliberately.
+# ---------------------------------------------------------------------------
+MAX_ACCEPTABLE_DRAWDOWN = 0.40   # 40%
+ALLOW_BUY_AND_HOLD_LIVE = False

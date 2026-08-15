@@ -12,7 +12,14 @@ what actually happened to the money and why.
 ---
 
 ## Current State (as of Aug 14, 2026)
-- Versions 1-15 complete.
+- Versions 1-17 complete.
+- 🔴 **HEADLINE FINDING: the strategies do not beat buy and hold.** Tested across
+  33 sector-diverse tickers with honest out-of-sample selection, no strategy beat
+  holding on more than 7 of 33. Five of six have a negative mean Sharpe. See
+  Version 17 — this is the project's conclusion, not a bug to be fixed.
+- 🔴 **Buy & hold beats every ML strategy on every ticker.** Auto-selection now
+  picks Buy & Hold for NVDA, TSLA, AAPL and IBM. Only JPM keeps an active
+  strategy (SMA Crossover). See Version 16.
 - **Live strategies (Aug 14 2026, V15 engine): NVDA -> EMA Crossover, TSLA -> Logistic Regression, AAPL -> EMA Crossover, JPM -> SMA Crossover, IBM -> Logistic Regression.**
 - **⚠️ ALL BACKTEST NUMBERS PREDATING VERSION 13 ARE VOID.** Three separate Version 13
   changes moved every backtest figure: position size 0.50 → 1.0 in the backtest,
@@ -417,6 +424,413 @@ $22,907.63 → correctly detected as 1.91x with $10,897.29 margin debt).
 **Once this has a few weeks of data it replaces reconstruction for: true live equity
 curve, true live max drawdown, true live Sharpe, real slippage measurement (CSV signal
 price vs actual fill price), and an automatic buy & hold benchmark.**
+
+---
+
+## Version 17 — The Verdict (COMPLETE) 🔴 THE STRATEGIES DO NOT WORK
+
+**This is the most important section in this document. It is the conclusion the
+whole project was built to be able to reach honestly.**
+
+### The finding, stated plainly
+
+**Quantara's trading strategies underperform simply buying and holding the same
+stocks — badly, consistently, and across every test designed to give them a
+fair chance.** This is not a tuning problem, a bug, or a bad sample. Six
+strategies were tested on 33 stocks with proper out-of-sample discipline and
+none of them worked.
+
+### How the conclusion was reached (the chain of tests)
+
+Each test was designed to eliminate one excuse for the previous result.
+
+**Test 1 — the original five tickers (Version 16).** Buy & hold beat every ML
+strategy on all five, on Sharpe as well as raw return. **Excuse:** the tickers
+(NVDA, TSLA, AAPL, JPM, IBM) were chosen in 2026 knowing how 2015-2024 went,
+and four were large-cap tech during a historic bull run. "You cannot beat
+holding NVDA during the NVDA decade" is true of nearly everyone.
+
+**Test 2 — five hindsight-free tickers.** THRM, LWAY, ECVT, PSA (plus NFLX as a
+positive control). Active strategies "beat" holding on 3 of 4. **This looked
+like vindication and was not.** Two flaws:
+- The comparison took the BEST OF SEVEN strategies against ONE benchmark. With
+  eight equally worthless candidates, the max of seven beats the single one
+  **7/8 = 87.5%** of the time by construction. A "3 of 4" result is *below*
+  what no skill predicts.
+- The winner was chosen using the same period it was then scored on — pure
+  look-ahead. Real deployment picks on history and finds out later.
+
+**Test 3 — 33 tickers, honest selection.** Deliberately sector-diverse
+(utilities, staples, REITs, telecom, energy, materials, healthcare,
+industrials) and deliberately including known decliners (INTC, WBA, PARA, KHC,
+MMM, T, VZ, BXP, LEG, F). Strategy picked on the FIRST half of each stock's
+history, then scored on the SECOND half — exactly what `auto_selector` does
+live.
+
+```
+1. HONEST      picked on train, scored on test    2/33 =  6%   baseline 50%
+2. CHEATING    best chosen using test itself     16/33 = 48%   baseline 88%
+3. PERSISTENCE train winner also won on test      6/33 = 18%   baseline 14%
+4. DRAWDOWN    picked had shallower drawdown     14/33 = 42%
+5. RETURN      mean picked +9.6%  vs  B&H +62.3%
+```
+
+(Note: 8 of the 33 had Buy & Hold picked on train, which then ties itself on
+test and scores as a loss. Excluding those, the honest result is 2 of 25 = 8%.
+It does not change anything.)
+
+**Test 4 — the decisive one. No selection at all.** Apply each single strategy
+uniformly to all 33 tickers and ask whether it beats holding. This removes the
+selection problem entirely: if a strategy has real edge it should show up
+broadly, not on cherry-picked names.
+
+```
+Strategy                beats B&H   mean Sharpe   mean return   mean DD
+Logistic Regression       7/33          0.037         31.6%      -42.2%
+Random Forest             7/33         -0.129          6.3%      -45.5%
+EMA Crossover             6/33         -0.052         12.1%      -40.7%
+SMA + RSI                 5/33         -0.148          5.0%      -39.3%
+Bollinger Bands           3/33         -0.574         -4.3%      -19.6%
+SMA Crossover             2/33         -0.104          7.6%      -42.3%
+------------------------------------------------------------------------
+BUY & HOLD                  --          0.214         62.3%      -49.2%
+```
+
+**Not one strategy beats holding on more than 7 of 33 tickers (21%).** Under a
+50% no-skill baseline, all six are far below chance. **Five of six have a
+NEGATIVE mean Sharpe.** Buy & hold's mean Sharpe is higher than every single
+one of them.
+
+### What each number means
+
+**6% honest win rate against a 50% baseline** is not "no edge" — it is
+*actively harmful*. Picking a strategy on history and deploying it did worse
+than flipping a coin, by 44 points.
+
+**48% cheating win rate against an 88% baseline** is the hardest number to
+explain away. Even when allowed to see the answers and choose the best of seven
+in hindsight, the strategies still lose to holding more than half the time. That
+is not a selection failure — the strategies themselves are the problem.
+
+**18% persistence against a 14% chance baseline** answers the central design
+question of this entire project. Auto-selection rests on the premise that
+different stocks have different character, so different strategies suit them. If
+that premise held, a strategy chosen on old data would keep working on new data.
+**It does not.** The winner on the first half of a stock's history is essentially
+random with respect to the winner on the second half. Per-stock strategy fitting
+was fitting to noise.
+
+### A prediction that was recorded in advance and failed
+
+Before the run, the stated expectation was: *"drawdown will favour the
+strategies even if the return numbers do not, because sitting in cash
+structurally reduces drawdown."*
+
+**It did not.** 42% better, mean -47.1% vs -49.2%. Essentially nothing. The
+reasoning missed that these strategies were frequently in cash during
+*recoveries* and invested during *declines* — eating the drawdowns without the
+rebounds.
+
+The one genuine exception: **Bollinger Bands averaged -19.6% drawdown vs buy &
+hold's -49.2%** — less than half. It also lost money (-4.3% mean return). So it
+is a real risk-reduction property attached to a strategy with no return, which
+is not useful on its own but is the only risk finding in the set that survived.
+
+### Why this happens (the mechanism)
+
+Daily-bar trend-following and mean-reversion rules on liquid US large-caps are
+the most studied, most arbitraged setup in all of finance. Any edge was
+competed away decades ago.
+
+Meanwhile the strategies impose guaranteed costs:
+- **Time out of the market forfeits the equity risk premium.** The market's
+  upward drift is what generates return. Every day in cash gives some up.
+- Transaction costs on every round trip.
+- Execution lag — signal at the close, fill at the next open.
+
+Unless the signal is genuinely better than random, being out of the market is
+pure cost. Persistence at 14% says the signal is not better than random. The
+`+9.6% vs +62.3%` return gap is that arithmetic: the strategies captured roughly
+15% of the return that was available for the taking.
+
+### ⚠️ WHAT THIS FINDING DOES *NOT* PROVE
+
+Intellectual honesty cuts both ways, and a negative result has limits too:
+
+- It does **not** prove no strategy can beat the market. It tests **six specific
+  strategies** on daily bars.
+- It does **not** test intraday frequencies, where microstructure differs and
+  retail participation is thinner.
+- It does **not** test **non-price signals** — fundamentals, sentiment, news,
+  cross-sectional ranking, or anything outside OHLC.
+- The basket is **better than the original five but still not unbiased**. It was
+  written from memory, which means survivorship contamination. A true test needs
+  point-in-time index membership including delisted names. (Notably, **K and WBA
+  failed to download because they have genuinely been delisted** — Kellanova
+  acquired, Walgreens taken private — so the basket did contain real casualties.)
+- It covers **one regime**: roughly 2015-2026, a period dominated by a long bull
+  market and one sharp COVID crash. Trend-following historically performs better
+  in prolonged bear markets, which this window barely contains.
+- The 50/50 train/test split is one methodology. Rolling-window or expanding
+  walk-forward could give different results.
+
+### Guardrails added as a result
+
+`compute_composite_score` weights drawdown at only 0.3 while raw return is
+**unbounded**. TSLA's buy & hold scored **3.7365** on a **-73.6% drawdown** and
+won outright — the return term alone contributed 3.04. Recovering from -73.6%
+requires **+279%**, and almost nobody holds through it. Sharpe does not capture
+this either; it measures volatility, not survivability.
+
+- **`MAX_ACCEPTABLE_DRAWDOWN = 0.40`** — a candidate whose backtested max
+  drawdown is worse than this is ineligible for live selection regardless of
+  score. If nothing clears the bar, the selector takes the **lowest-drawdown**
+  candidate and prints `Consider not trading this ticker` rather than silently
+  taking the top score.
+- **`ALLOW_BUY_AND_HOLD_LIVE = False`** — Buy & Hold is scored every run as the
+  benchmark, but is not tradeable. Live it has no stop loss by definition, and
+  the assignment file had already selected it for NVDA, TSLA, AAPL and IBM,
+  meaning the next scheduled run would have opened four unprotected positions
+  on names with -66% and -74% backtested drawdowns.
+- The selector now prints the vs-Buy-&-Hold gap for every ticker on every run.
+
+### Follow-up — pairwise indicator combinations (also failed)
+
+The natural response to Version 17 is "the indicators are fine, they just need
+combining." Tested: 16 conditions → **120 pairwise combinations × 33 tickers =
+3,960 backtests**, with tickers split into 17 discovery / 16 confirmation. The
+confirmation half was not touched until the top 5 candidates were locked in.
+
+```
+DISCOVERY  best combo: sma_cross + rsi_not_hot       7/17
+CONFIRMATION on held-back tickers:
+  sma_cross + rsi_not_hot        7/17 -> 2/16    Sharpe -0.356 vs B&H
+  ema_cross + rsi_not_hot        6/17 -> 2/16    Sharpe -0.296
+  rsi_not_hot + bb_lower_half    6/17 -> 3/16    Sharpe -0.220
+  mom5_positive + rsi_bullish    5/17 -> 1/16    Sharpe -0.434
+  rsi_not_hot + adx_quiet        5/17 -> 1/16    Sharpe -0.490
+```
+
+**Nothing survived confirmation.** Every top-12 combination had a NEGATIVE mean
+Sharpe even on discovery. Combining indicators does not fix a problem that was
+never about the indicators.
+
+**⚠️ METHODOLOGICAL CORRECTION — the null used was too generous.** The script
+simulated a `Binomial(n, 0.5)` null, i.e. "a worthless combo beats buy & hold
+half the time." That is wrong. A timing rule that sits in cash part of the time
+does not face a coin flip, it faces the **equity risk premium**: random timing
+*systematically* loses to holding in a rising market, so the true no-skill win
+rate is well below 50%.
+
+This means the reported "best scored 7/17 vs 13.6/17 by luck" **overstates how
+anomalous the result is** — the combos may be at chance rather than below it. A
+better null would simulate random signals with matched market exposure. The
+confirmation collapse (1-3 of 16, all negative Sharpe) is decisive either way,
+so this does not change the conclusion — but the 50% baseline should not be
+quoted as-is in the final report.
+
+### Follow-up — cross-sectional momentum (promising for one decade, then dead)
+
+The third and final hypothesis. Unlike everything before it, this was NOT market
+timing: rank the universe each month, hold the top slice, **always fully
+invested**. That matters, because the failure mechanism of Versions 16-17 was
+sitting in cash and forfeiting the equity risk premium. A ranking strategy never
+does that.
+
+**On 2016-2026 it looked genuinely good.** 33 tickers: 11.16% CAGR vs a 4.90%
+equal-weight benchmark, beat all 1,000 random selections, +12.28% top-minus-
+bottom spread. Expanded to 144 tickers: 80% of the parameter grid beat the
+benchmark, survived 30bps costs, cleared size-matched random controls. Year by
+year it won 7 of 11.
+
+**Then it was tested from 2000 instead of 2015** — 26 years, 301 rebalances,
+including the dot-com collapse, 2008, and 2009 (the worst momentum crash on
+record). Nothing else changed.
+
+```
+                        CAGR      MaxDD    edge
+momentum (6mo, top20%) 13.32%    -47.7%
+equal-weight all       12.89%    -44.9%   +0.43%
+
+BY PERIOD              momentum  benchmark   edge    years won
+2000-2009               10.80%     11.17%   -0.36%     4/9
+2010-2019               12.62%     14.49%   -1.87%     4/10
+2020-2026               17.71%     12.71%   +5.01%     5/7
+
+momentum beat the benchmark in 13 of 26 years — exactly a coin flip
+parameter plateau collapsed from 80% to 35% of cells
+did NOT clear the 95th percentile of size-matched random (13.32% vs 13.42%)
+```
+
+**The entire edge lives in 2020-2026.** Both earlier decades are negative. The
+2016-2026 result was the decade, not the effect.
+
+**On the crash years.** 2002 -5.7%, 2009 -12.2%, 2020 -2.5% — all survivable,
+which initially reads as reassuring. It is not, for a technical reason: the
+documented -50% momentum crashes are for **long-short** momentum. This
+implementation is **long-only**, which underperforms during crashes rather than
+collapsing. Passing that check was never a high bar.
+
+**One honest observation, deliberately NOT acted on.** In the 26-year grid the
+top 10% column beat the benchmark in 5 of 5 lookbacks, while every wider slice
+mostly failed. That is the concentration pattern hypothesised earlier, appearing
+in a fresh sample. It was **not** pursued, for a reason that matters more than
+the observation: by this point the same price data had been searched through
+six strategies, 120 indicator pairs, four ranking signals, and two parameter
+grids. Finding one more configuration that works, after that much searching, is
+what a false positive looks like. The correct response to "one cell survived
+after hundreds of tests" is to stop, not to run test 601.
+
+**Conclusion: all three hypotheses are now falsified.** Per-stock market timing,
+indicator combinations, and cross-sectional ranking. The last one held up for a
+decade and failed the moment it met a longer sample containing its known failure
+mode - which is precisely why testing over a window that excludes that mode
+proves nothing.
+
+### The standing conclusion
+
+**Quantara is a working, well-instrumented research system whose headline
+finding is that its own strategies do not beat buy and hold.** That is a real
+result, arrived at properly, and it is worth more than a backtest showing 500%
+that nobody stress-tested.
+
+Everything from Version 13 onward existed to make this conclusion trustworthy:
+four correctness bugs in the accounting, three fail-open bugs in live order
+handling, ~1.9x accidental leverage, a benchmark that was not a benchmark, a
+selection bias measured rather than assumed, and 167 tests to keep it that way.
+Without that work, the honest answer here would have been unknowable.
+
+---
+
+## Version 16 — The Benchmark (COMPLETE) 🔴 THE DECISIVE RESULT
+
+Phase 2+3 of the post-audit plan. For the first time the system was measured
+against the obvious alternative: **just buy the stock and do nothing.**
+
+### What was fixed first
+
+- **Sharpe now subtracts a risk-free rate**, from `^IRX` (13-week T-bill) via
+  the price cache, with a 4% constant fallback. It never did. Sharpe is x0.5 in
+  `compute_composite_score`, so this was influencing *selection*, not just
+  reporting. The penalty scales as `rf / volatility`, so **low-volatility
+  strategies lose more Sharpe than high-volatility ones** (measured: 0.649 vs
+  0.086 on synthetic series).
+- **`Win_Rate` renamed `Up_Day_Rate`.** It counted the fraction of DAYS the
+  portfolio rose, cash days counting as losses — which is why it read ~30% next
+  to a genuine trade-level 56.3%.
+- **`Market_Return` and a new `Vs_Market` are surfaced everywhere.**
+  `Market_Return` had been computed on every backtest since day one and read by
+  nothing.
+- **Buy & Hold added as a scoreable candidate**, stopless in backtest
+  (`stop_loss=0`) and live (`apply_stop_loss=False`).
+- **`stop_loss = 0` meant "stop at 0%", not "no stop"** — `price < entry * (1-0)`
+  fires on ANY downtick. Caught by a test. Left unfixed it would have made the
+  Buy & Hold candidate sell on the first red day and re-buy the next, which
+  would have looked catastrophic and produced exactly the wrong conclusion from
+  a one-character bug.
+
+### 🔴 RESULT — buy & hold wins 4 of 5 tickers
+
+```
+Ticker  Best Strategy    Score   Sharpe  Return    MaxDD
+NVDA    Buy & Hold      3.0321   1.297   1141.31%  -66.34%
+TSLA    Buy & Hold      3.7365   1.242   1518.20%  -73.63%
+AAPL    Buy & Hold      1.3154   1.046    293.32%  -31.43%
+JPM     SMA Crossover   0.7919   0.753     91.65%  -22.64%
+IBM     Buy & Hold      0.4931   0.414     51.51%  -38.98%
+```
+
+**Every ML strategy lost to buy & hold on every ticker. Ten out of ten.**
+
+```
+Vs Buy & Hold (percentage points)     LR         RF
+NVDA                                 -764.20   -821.51
+TSLA                                -1070.04  -1442.71
+AAPL                                 -162.38   -222.50
+JPM                                   -52.51    -82.03
+IBM                                   -29.30    -52.93
+```
+
+**This is not an artifact of the unbounded return term in the composite score.**
+That concern was raised in advance and checked: B&H also wins on **Sharpe
+alone** — NVDA 1.297 vs LR 1.129, TSLA 1.242 vs 0.963, AAPL 1.046 vs 0.839,
+IBM 0.414 vs 0.252.
+
+**JPM is the sole survivor.** SMA Crossover 91.65% vs B&H 79.12%. JPM is the
+one name in the book that did not ride a secular tech uptrend — consistent with
+the standing hypothesis that this system earns its keep on non-trending names,
+which now rests on exactly one ticker.
+
+### ⚠️ THE COUNTER-ARGUMENT, WHICH IS REAL
+
+Buy & hold's drawdowns are **-66% on NVDA and -74% on TSLA**. Recovering from
+-74% requires a **+285%** gain just to break even; from -66%, **+194%**.
+
+Sharpe does not measure this. Sharpe is return per unit of *volatility*; it says
+nothing about whether the path was survivable. A strategy with a superior Sharpe
+and a 74% drawdown is not obviously the better choice for a real person, who
+would in practice sell near the bottom.
+
+So the honest statement is narrower than "buy & hold wins":
+**buy & hold produced more return per unit of volatility on these five
+hindsight-selected names over their strongest decade, at drawdowns most people
+could not sit through.** Every one of those qualifiers matters.
+
+### Walk-forward re-run — the override is dead
+
+With all four control arms finally executing (Round 3's Arm A never ran; the
+B&H arm was scored with a stop and was not buy & hold):
+
+```
+Ticker Model   winner   interpretation
+AAPL   LR      gated    "gate adds ~nothing" (beats arm B by 0.006)
+AAPL   RF      B&H
+IBM    LR      armA     RSI gate is decorative
+IBM    RF      armB     exit signal has NO value
+JPM    LR      B&H
+JPM    RF      armB
+NVDA   LR      armB
+NVDA   RF      armB
+TSLA   LR      armA
+TSLA   RF      B&H
+```
+
+**The RSI-gated override wins outright in ZERO of ten cases.** Its one nominal
+win is flagged as adding nothing.
+
+The parameter surface confirms it. The no-gate control row (RSI 0) averages
+**0.309**; the best gated cell is **0.317**. A margin of 0.008 is noise. The
+gate does nothing between RSI 0 and 55, then starts actively hurting at 60+.
+
+**Standing conclusion:** whatever the "momentum override" was capturing, it was
+the trailing stop, not the momentum condition it is named after. The Version 12
+research finding — *"model override beats model retraining for rare-event
+capture"* — does not survive a proper control.
+
+### 🐛 Two reporting bugs in the harness itself (fixed)
+
+- **"Interior maximum found" was wrong.** The surface check treated
+  `RSI_Trigger = 0` — the *control arm* — as a grid point. With the control
+  excluded, the best gated cell beats no-gate by 0.008 and the report now says
+  so explicitly instead of announcing a mechanism.
+- **ADOPT verdicts were measured against the ML baseline**, which itself loses
+  to B&H by 800+ points. A large positive delta only meant the override dragged
+  a losing strategy part of the way back toward doing nothing. The verdict now
+  reports a `vs B&H` column and returns **"LOSES TO BUY & HOLD - not an edge"**
+  whenever B&H beats the override over the same window.
+
+### ⬜ WHERE THIS LEAVES THE PROJECT
+
+The question is no longer "does the override work" or "which model is best". It
+is:
+
+> **Does this system beat holding, on stocks that did not go up 10x?**
+
+JPM says maybe. One ticker is not evidence. Running the whole pipeline on ~5
+tickers chosen *without hindsight* — something outside tech, something that went
+sideways for a decade, something that declined — is the experiment that settles
+it, and everything since Version 13 has been clearing the instruments so that
+its answer can be trusted.
 
 ---
 
@@ -1975,7 +2389,50 @@ logging.
   - Local price cache with split/dividend self-healing; two cache bugs caught
     by tests, one of which made it a complete no-op
   - 145 assertions across 9 network-free suites
-### Version 16 (next) — Benchmark Correction
+### Version 16 ✅ — The Benchmark
+  - Sharpe now subtracts a real risk-free rate (^IRX, cached, constant fallback)
+  - Win_Rate renamed Up_Day_Rate; Market_Return and Vs_Market surfaced
+  - Buy & Hold added as a scoreable, genuinely stopless candidate
+  - Found `stop_loss=0` meant "stop at 0%", not "no stop" - would have wrecked
+    the benchmark silently
+  - RESULT: B&H wins 4 of 5 tickers, on Sharpe as well as return. All 10
+    ticker/model combinations lose to it. JPM is the sole survivor
+  - Momentum override dead: RSI gate wins 0 of 10 against its own controls
+  - Two reporting bugs in the walk-forward harness fixed
+  - 167 assertions across 10 network-free suites
+### Version 17 ✅ — The Verdict
+  - 33 sector-diverse tickers, deliberately including known decliners
+  - Fixed a look-ahead bug: strategy now picked on TRAIN, scored on TEST
+  - HONEST win rate 2/33 = 6% against a 50% no-skill baseline
+  - PERSISTENCE 18% against 14% chance -> per-stock strategy fitting is fitting
+    to noise; the premise auto-selection rests on does not hold
+  - No single strategy beats B&H on more than 7 of 33 tickers; 5 of 6 have a
+    negative mean Sharpe
+  - A drawdown prediction recorded in advance FAILED and is documented as such
+  - Guardrails: MAX_ACCEPTABLE_DRAWDOWN, Buy & Hold benchmark-only
+### Version 18 ✅ — Three hypotheses, all falsified
+  - Pairwise indicator combos: 120 pairs x 33 tickers, nothing survived
+    confirmation on held-back tickers
+  - Fundamentals: ruled out by probe — yfinance provides ~1.8 years median,
+    roughly 4 usable rebalance points. Dead without paid data
+  - Cross-sectional momentum: strong on 2016-2026 (80% parameter plateau, beat
+    all random controls), then FAILED on 2000-2026. 13/26 winning years, edge
+    +0.43%, negative in both pre-2020 decades
+  - The entire momentum edge sits in 2020-2026
+  - Stopped searching deliberately. After ~600 configurations tested against the
+    same price data, finding one more that works is what a false positive looks
+    like
+### Version 19 (open) — Where next
+  - Adding MORE strategies makes the selection problem WORSE, not better: with
+    7 candidates the hindsight baseline is 88%, with 30 it is ~97%. The bottleneck
+    is not candidate count, it is that selection cannot distinguish signal from
+    noise (persistence = chance)
+  - The correct test for ANY new strategy: apply it uniformly across 30+ tickers
+    and ask whether it beats B&H on average. No picking. `experiment_basket.py`
+    already does this
+  - Non-price signals are the only untested hypothesis available at zero cost:
+    fundamentals, cross-sectional ranking, sentiment/news
+  - Intraday is ruled out on cost grounds (paid data + always-on infrastructure)
   - Make buy & hold the default benchmark in `get_metrics` output, the composite score,
     and the dashboard. It has always been computed and never shown
   - Add buy & hold as a scoreable candidate in `auto_selector.py`

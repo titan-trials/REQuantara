@@ -52,6 +52,15 @@ def run_backtest(df, initial_capital, stop_loss, position_size,
     # so fall back rather than break.
     has_open = "Open" in df.columns
 
+    # stop_loss = 0 means NO STOP, not "stop at 0%".
+    #
+    # Without this the condition `price < entry_price * (1 - 0)` reduces to
+    # `price < entry_price`, which fires on ANY downtick - the exact opposite of
+    # stopless. That would have silently wrecked the Buy & Hold candidate, which
+    # passes stop_loss=0 precisely to be stopless, turning the benchmark into
+    # "sell whenever the price ticks down."
+    stop_enabled = stop_loss is not None and stop_loss > 0
+
     capital = initial_capital
     shares = 0.0
     entry_price = 0.0
@@ -77,7 +86,7 @@ def run_backtest(df, initial_capital, stop_loss, position_size,
         # Stop loss takes priority over the model, matching check_stop_loss()
         # in alpaca_executor.py.
         decision = None
-        if shares > 0 and close < entry_price * (1 - stop_loss):
+        if stop_enabled and shares > 0 and close < entry_price * (1 - stop_loss):
             decision = "SELL"
         elif shares == 0 and signal == 1:
             decision = "BUY"
@@ -94,7 +103,7 @@ def run_backtest(df, initial_capital, stop_loss, position_size,
             # no-op that only ratcheted entry_price downward. Live cannot do
             # this: check_stop_loss() force-sells and returns.
             stopped = False
-            if shares > 0 and close < entry_price * (1 - stop_loss):
+            if stop_enabled and shares > 0 and close < entry_price * (1 - stop_loss):
                 capital = _sell(capital, shares, close, cost_rate)
                 shares, entry_price = 0.0, 0.0
                 stopped = True

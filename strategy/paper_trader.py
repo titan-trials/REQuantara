@@ -11,7 +11,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import StandardScaler
 from datetime import datetime, timedelta
 from data.loader import load_data
-from strategy.auto_selector import auto_select, compute_composite_score
+from strategy.auto_selector import auto_select, compute_composite_score, BUY_AND_HOLD
 from evaluation.metrics import get_metrics
 from backtest.engine import run_backtest
 import os
@@ -140,6 +140,12 @@ def generate_current_signal(df, strategy_name, initial_capital, stop_loss, posit
             df = generate_bollinger_signals(df)
             return int(df["Signal"].iloc[-1])
 
+        elif strategy_name == BUY_AND_HOLD:
+            # Always long. execute_signal() buys once and then skips every
+            # subsequent day because a position already exists. The stop loss
+            # is bypassed for this strategy - see run_paper_trader below.
+            return 1
+
         elif strategy_name == "Logistic Regression":
             X_train, y_train, X_today = _split_for_live_prediction(df)
 
@@ -219,7 +225,14 @@ def run_paper_trader(tickers, start, end, initial_capital, stop_loss, position_s
         # Execute on Alpaca
         try:
             client = get_client()
-            order_result, exit_reason = execute_signal(client, ticker, signal, current_price)
+            # Buy & Hold must be genuinely stopless, or it is not buy & hold -
+            # it becomes "stopped out at -5%, re-bought the next day", which is
+            # a whipsaw strategy wearing a benchmark's name. This mirrors
+            # stop_loss=0 in the auto_selector candidate.
+            order_result, exit_reason = execute_signal(
+                client, ticker, signal, current_price,
+                apply_stop_loss=(best_strategy != BUY_AND_HOLD),
+            )
         except Exception as e:
             print(f"[{ticker}] Alpaca execution failed: {e}")
             exit_reason = None

@@ -54,6 +54,53 @@ class StrategyEvaluationError(Exception):
     """
 
 
+try:
+    from config import MAX_ACCEPTABLE_DRAWDOWN, ALLOW_BUY_AND_HOLD_LIVE
+except ImportError:
+    MAX_ACCEPTABLE_DRAWDOWN, ALLOW_BUY_AND_HOLD_LIVE = 0.40, False
+
+
+def select_best(results):
+    """Pick a tradeable strategy, subject to a drawdown guardrail.
+
+    Returns (chosen, note). `note` is a string when something unusual happened
+    and None otherwise.
+
+    WHY A HARD LIMIT RATHER THAN JUST SCORING IT. compute_composite_score
+    weights drawdown at 0.3 while total return is unbounded, so on a name that
+    ran 1500% the return term alone contributes 3.0 and drowns everything else.
+    TSLA's Buy & Hold scored 3.7365 on a -73.6% drawdown and won outright.
+    Recovering from -73.6% requires +279%. A metric that ranks that first is
+    answering a different question from the one an investor is asking.
+    """
+    eligible = list(results)
+
+    if not ALLOW_BUY_AND_HOLD_LIVE:
+        eligible = [r for r in eligible if r["Strategy"] != BUY_AND_HOLD]
+    if not eligible:
+        raise StrategyEvaluationError("no tradeable candidates")
+
+    limit_pct = MAX_ACCEPTABLE_DRAWDOWN * 100
+    within = [r for r in eligible if abs(r["Max_Drawdown"]) <= limit_pct]
+
+    if within:
+        chosen = max(within, key=lambda r: r["Score"])
+        excluded = len(eligible) - len(within)
+        note = (f"{excluded} candidate(s) excluded for drawdown worse than "
+                f"{limit_pct:.0f}%") if excluded else None
+        return chosen, note
+
+    # Nothing clears the bar. Take the least-bad drawdown rather than the
+    # highest score, and be loud about it - this means every available strategy
+    # on this ticker is riskier than the account is willing to accept.
+    chosen = min(eligible, key=lambda r: abs(r["Max_Drawdown"]))
+    return chosen, (
+        f"*** NO candidate under {limit_pct:.0f}% drawdown. Fell back to "
+        f"{chosen['Strategy']} at {chosen['Max_Drawdown']:.1f}% (lowest "
+        f"available). Consider not trading this ticker. ***"
+    )
+
+
 def compute_composite_score(metrics):
     sharpe = metrics["Sharpe_Ratio"]
     drawdown = abs(metrics["Max_Drawdown"]) / 100
@@ -99,7 +146,35 @@ def save_assignments(selections_df):
 # Candidate evaluation
 # --------------------------------------------------------------------------
 
+# The name is matched in three places - auto_selector, paper_trader's live
+# signal branch, and the stop-loss bypass in the executor - so it lives here.
+BUY_AND_HOLD = "Buy & Hold"
+
+
+def _buy_and_hold_signal(df):
+    """Always long. The benchmark every other strategy has to beat."""
+    df["Signal"] = 1
+    df["Position"] = 1
+    return df
+
+
 RULE_BASED_STRATEGIES = [
+    {
+        # Added in Version 16. Until now the selector only ever asked "which of
+        # my six strategies scores highest?" - never "is any of this better
+        # than just buying the stock and doing nothing?". get_metrics has
+        # returned Market_Return since day one and nothing read it.
+        #
+        # NOTE `stop_loss: 0`. This must be genuinely stopless to be a real
+        # benchmark. Scored with the usual 5% stop it becomes "always long,
+        # stopped out at -5%, re-entered the next bar" - a whipsaw strategy,
+        # not buy and hold. That exact mistake invalidated the Round 3 control
+        # arm in Version 14.
+        "name": BUY_AND_HOLD,
+        "build": lambda df: df,
+        "signal": _buy_and_hold_signal,
+        "stop_loss": 0.0,
+    },
     {
         "name": "SMA Crossover",
         "build": lambda df: [compute_sma(df, 20), compute_sma(df, 50)][-1],
@@ -138,7 +213,10 @@ def evaluate_rule_based(ticker, test_df, initial_capital, stop_loss, position_si
             df = test_df.copy()
             df = strategy["build"](df)
             df = strategy["signal"](df)
-            df = run_backtest(df, initial_capital, stop_loss, position_size)
+            # Buy & Hold overrides the stop to 0 so it is genuinely stopless.
+            df = run_backtest(df, initial_capital,
+                              strategy.get("stop_loss", stop_loss),
+                              position_size)
             metrics = get_metrics(df, initial_capital)
             metrics["Strategy"] = name
             metrics["Score"] = compute_composite_score(metrics)
@@ -265,7 +343,19 @@ def _auto_select_strict(tickers, start, end, initial_capital, stop_loss, positio
             )
 
         results_df = pd.DataFrame(all_results)
-        best = results_df.loc[results_df["Score"].idxmax()]
+        best, note = select_best(all_results)
+        if note:
+            print(f"[auto_select] {ticker}: {note}")
+
+        # The benchmark comparison is the most useful line the selector prints,
+        # whether or not Buy & Hold is eligible to trade.
+        bh = next((r for r in all_results if r["Strategy"] == BUY_AND_HOLD), None)
+        if bh is not None and best["Strategy"] != BUY_AND_HOLD:
+            gap = best["Total_Return"] - bh["Total_Return"]
+            print(f"[auto_select] {ticker}: vs Buy & Hold  "
+                  f"{gap:+.1f} pts return, "
+                  f"Sharpe {best['Sharpe_Ratio'] - bh['Sharpe_Ratio']:+.3f}, "
+                  f"drawdown {best['Max_Drawdown']:.1f}% vs {bh['Max_Drawdown']:.1f}%")
 
         # Surface near-ties. A margin this small means the winner is noise, and
         # noise-driven winners are what produce day-to-day strategy churn.

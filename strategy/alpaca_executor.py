@@ -111,10 +111,19 @@ def submit_and_verify(client, order_request, ticker, action_desc, checks=5, dela
     return latest, True
 
 
-def execute_signal(client, ticker, signal, price):
+def execute_signal(client, ticker, signal, price, apply_stop_loss=True):
     """
     Always returns a (result, reason) tuple. result is None if no order
     was placed. reason is one of "STOP_LOSS", "SIGNAL", or None.
+
+    `apply_stop_loss=False` is used for the Buy & Hold strategy. A stopped
+    buy-and-hold is not buy and hold - it becomes "stopped out at -5% and
+    re-bought the next day", a whipsaw strategy wearing a benchmark's name.
+    This mirrors stop_loss=0 on the Buy & Hold candidate in auto_selector, so
+    live and backtest describe the same thing.
+
+    Consequence worth stating plainly: a ticker on Buy & Hold has NO downside
+    protection. That is what buy and hold means.
     """
     account = get_account(client)
     portfolio_value = float(account.portfolio_value)
@@ -128,7 +137,7 @@ def execute_signal(client, ticker, signal, price):
     # matter.
 
     # STOP LOSS CHECK — takes priority over the model's signal
-    if position is not None and check_stop_loss(position, price):
+    if apply_stop_loss and position is not None and check_stop_loss(position, price):
         entry_price = float(position.avg_entry_price)
         drawdown_pct = (price - entry_price) / entry_price * 100
         shares = float(position.qty)

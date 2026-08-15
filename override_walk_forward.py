@@ -145,7 +145,13 @@ def main():
                 # property of the sample, not of the rule.
                 d_bh = df.iloc[mid:].copy()
                 d_bh["Signal"] = 1
-                d_bh = run_backtest(d_bh, INITIAL_CAPITAL, STOP_LOSS,
+                # stop_loss=0 — MUST be stopless to be a real benchmark.
+                #
+                # The Round 3 run passed STOP_LOSS (0.05), so "buy & hold" was
+                # actually "always long, stopped out at -5%, re-entered the
+                # next bar" - a whipsaw strategy, not a hold. Every Round 3
+                # B&H figure was measuring the wrong thing.
+                d_bh = run_backtest(d_bh, INITIAL_CAPITAL, 0.0,
                                     BACKTEST_POSITION_SIZE)
                 m_bh = get_metrics(d_bh, INITIAL_CAPITAL)
                 control_rows.append({
@@ -153,6 +159,10 @@ def main():
                     "Arm": "buy_and_hold", "Trail": None,
                     "Base_Sharpe": b_sh, "New_Sharpe": m_bh["Sharpe_Ratio"],
                     "Delta_Sharpe": round(m_bh["Sharpe_Ratio"] - b_sh, 4),
+                    # Recorded so this is comparable to Version 11's
+                    # return-based live finding, not only on Sharpe.
+                    "Base_Return": b_ret, "New_Return": m_bh["Total_Return"],
+                    "Delta_Return": round(m_bh["Total_Return"] - b_ret, 4),
                     "Base_MaxDD": b_dd, "New_MaxDD": m_bh["Max_Drawdown"],
                     "Delta_MaxDD": round(m_bh["Max_Drawdown"] - b_dd, 4),
                     "Days_Held": len(d_bh),
@@ -172,6 +182,8 @@ def main():
                         "Arm": "trail_only", "Trail": trail,
                         "Base_Sharpe": b_sh, "New_Sharpe": mb["Sharpe_Ratio"],
                         "Delta_Sharpe": round(mb["Sharpe_Ratio"] - b_sh, 4),
+                        "Base_Return": b_ret, "New_Return": mb["Total_Return"],
+                        "Delta_Return": round(mb["Total_Return"] - b_ret, 4),
                         "Base_MaxDD": b_dd, "New_MaxDD": mb["Max_Drawdown"],
                         "Delta_MaxDD": round(mb["Max_Drawdown"] - b_dd, 4),
                         "Days_Held": held_b,
@@ -223,21 +235,36 @@ def main():
     print(f"Control arm B written to {OUT_CSV.replace('.csv', '_controls.csv')} "
           f"({len(controls)} rows)")
 
-    report(results)
+    report(results, controls)
     report_controls(results, controls)
 
 
-def report(results):
+def report(results, controls=None):
     print("\n" + "=" * 78)
     print("VERDICT BY TICKER + MODEL")
     print("=" * 78)
+    print("IMPORTANT: 'avg d' is measured against the ML MODEL's own baseline.")
+    print("That baseline can itself lose badly to buy & hold, in which case a")
+    print("large positive delta only means the override dragged a losing")
+    print("strategy part of the way back toward doing nothing. The 'vs B&H'")
+    print("column is the one that decides whether anything here is worth having.")
     print("cells    = config-window combinations improved, out of the full grid (configs x 4 windows)")
     print("windows  = windows where the override's AVERAGE delta was positive, out of 4")
     print("ddelta   = mean change in max drawdown (negative = deeper drawdown)")
     print()
+    print()
     print(f"{'Ticker':6s} {'Model':5s} {'cells':>7s} {'windows':>8s} "
-          f"{'avg d':>8s} {'worst d':>8s} {'ddelta':>8s}  verdict")
-    print("-" * 78)
+          f"{'avg d':>8s} {'vs B&H':>8s} {'ddelta':>8s}  verdict")
+    print("-" * 86)
+
+    def bh_delta(ticker, model):
+        """The buy & hold arm's own delta over the same baseline."""
+        if controls is None or not len(controls):
+            return None
+        rows = controls[(controls.Ticker == ticker)
+                        & (controls.Model == model)
+                        & (controls.Arm == "buy_and_hold")]["Delta_Sharpe"]
+        return float(rows.mean()) if len(rows) else None
 
     verdicts = []
     for (ticker, model), g in results.groupby(["Ticker", "Model"]):
@@ -249,10 +276,18 @@ def report(results):
         worst_window = per_window.min()
         dd_delta = g["Delta_MaxDD"].mean()
 
+        bh = bh_delta(ticker, model)
+
         # Deliberately demanding. Version 12's TSLA result was 9/9 on ONE window;
         # the whole point of this harness is that one window is not evidence.
-        if cells >= 0.8 * total and windows_pos == 4 and avg_delta > 0.05:
-            verdict = "ADOPT - consistent across all windows"
+        #
+        # And beating the model's own baseline is NOT sufficient. If buy & hold
+        # beats the override over the same window, the override is not an edge -
+        # it is a slightly less bad way of losing to doing nothing.
+        if bh is not None and avg_delta < bh:
+            verdict = "LOSES TO BUY & HOLD - not an edge"
+        elif cells >= 0.8 * total and windows_pos == 4 and avg_delta > 0.05:
+            verdict = "ADOPT - beats B&H, consistent across all windows"
         elif cells >= 0.6 * total and windows_pos >= 3:
             verdict = "PROMISING - retest, do not ship"
         elif avg_delta > 0:
@@ -261,8 +296,9 @@ def report(results):
             verdict = "REJECT"
 
         verdicts.append((ticker, model, verdict))
+        bh_str = f"{bh:>8.3f}" if bh is not None else f"{'n/a':>8s}"
         print(f"{ticker:6s} {model:5s} {cells:>4d}/{total:<2d} {windows_pos:>6d}/4 "
-              f"{avg_delta:>8.3f} {worst_window:>8.3f} {dd_delta:>8.2f}  {verdict}")
+              f"{avg_delta:>8.3f} {bh_str} {dd_delta:>8.2f}  {verdict}")
 
     print("\n" + "=" * 78)
     print("PER-WINDOW DETAIL (mean Sharpe delta)")
@@ -371,27 +407,50 @@ def report_controls(results, controls):
               f"{hd:>9.3f} {best:>7s}  {interp}")
 
     print("\n" + "-" * 78)
-    print("PARAMETER SURFACE - is there an interior maximum yet?")
-    print("If the best cell is STILL on the boundary, the optimum is further out")
-    print("and the effect is 'hold longer', not 'hold during momentum'.")
+    print("PARAMETER SURFACE - does the RSI gate do anything?")
     print("-" * 78)
     surface = results.pivot_table(
         index="RSI_Trigger", columns="Trail", values="Delta_Sharpe", aggfunc="mean"
     ).round(3)
     print(surface.to_string())
 
-    flat = surface.stack()
+    # RSI_Trigger 0 is CONTROL ARM A - the gate switched off. It is NOT a
+    # parameter value, and including it in "where is the maximum?" is what made
+    # an earlier version of this report announce an interior maximum when the
+    # surface was in fact flat: the best gated cell beat the no-gate control by
+    # 0.008, which is noise.
+    control = surface.loc[0].mean() if 0 in surface.index else None
+    gated = surface.drop(index=0, errors="ignore")
+
+    if gated.empty:
+        print("\nNo gated cells to compare.")
+        print("=" * 78)
+        return
+
+    flat = gated.stack()
     best_rsi, best_trail = flat.idxmax()
-    on_edge = (best_rsi in (min(RSI_TRIGGERS), max(RSI_TRIGGERS))
+    best = flat.max()
+
+    print(f"\nBest GATED cell:   RSI {best_rsi}, trail {best_trail:.0%}  "
+          f"-> {best:+.3f}")
+    if control is not None:
+        edge = best - control
+        print(f"No-gate control:   RSI 0 (gate disabled)         -> {control:+.3f}")
+        print(f"What the gate buys you:                             {edge:+.3f}")
+        if edge < 0.05:
+            print("\n*** THE RSI GATE IS DOING NOTHING. ***")
+            print("The gated grid does not meaningfully beat the same rule with the")
+            print("gate switched off. Whatever is working here, it is the trailing")
+            print("stop - not the momentum condition the rule is named after.")
+        else:
+            print("\nThe gate earns its place - gated beats no-gate by a real margin.")
+
+    gated_rsis = [r for r in RSI_TRIGGERS if r != 0]
+    on_edge = (best_rsi in (min(gated_rsis), max(gated_rsis))
                or best_trail in (min(TRAILS), max(TRAILS)))
-    print(f"\nBest cell overall: RSI {best_rsi}, trail {best_trail:.0%} "
-          f"(delta {flat.max():+.3f})")
     if on_edge:
-        print("*** STILL ON THE BOUNDARY - the optimum has not been bracketed. ***")
-        print("Widen the grid again before drawing any mechanistic conclusion.")
-    else:
-        print("Interior maximum found - the effect is genuinely parameter-specific,")
-        print("which supports a real mechanism rather than 'just hold longer'.")
+        print("\nNOTE: the best gated cell sits on the edge of the tested grid, so")
+        print("the optimum has still not been bracketed.")
     print("=" * 78)
 
 
