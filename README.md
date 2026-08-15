@@ -19,7 +19,7 @@ strategy selection, live paper trading through Alpaca on a GitHub Actions
 schedule, a Streamlit dashboard, and a performance analytics layer.
 
 It ran live on paper money from April 2026 and returned **+20.10%** against a
-**+4.48%** buy-and-hold benchmark over the same period — which looked like
+**+4.48%** buy-and-hold benchmark over the same period which looked like
 evidence of a real edge, and was the reason for everything that followed.
 
 ---
@@ -32,13 +32,13 @@ noticed**. Checking that led to checking everything else.
 **Bugs found in the accounting and execution layers:**
 
 - One `POSITION_SIZE` constant meant "fraction of one ticker's capital" in the
-  backtest and "fraction of the whole account" live — 5 tickers × 50% = 250%
+  backtest and "fraction of the whole account" live 5 tickers × 50% = 250%
   exposure, funded by margin.
 - Share counts were floored to whole numbers, making effective position size
   depend on share price. A $365 stock got 18% when asked for 20%, and nothing
   at all at small sizes.
 - The backtest stop loss sold and re-bought on the same bar, so it never
-  removed exposure — it only reset the entry price lower.
+  removed exposure it only reset the entry price lower.
 - The backtest executed at the same close it computed the signal from. Live
   fills at the next open. This made gap risk structurally invisible.
 - No transaction costs anywhere, which biased *which strategy got selected*,
@@ -48,7 +48,7 @@ noticed**. Checking that led to checking everything else.
 - The auto-selector wrapped every strategy in a bare `except` and silently
   traded on an incomplete candidate field.
 - Sharpe never subtracted a risk-free rate. `Win_Rate` was not a win rate.
-  `Market_Return` — the buy-and-hold comparison — was computed on every
+  `Market_Return` the buy-and-hold comparison was computed on every
   backtest since day one and read by nothing.
 
 Every one of these flattered the results.
@@ -65,7 +65,7 @@ were large-cap tech during a historic bull run.
 
 **2. Thirty-three hindsight-free tickers**, deliberately including known
 decliners, with the strategy picked on the first half of history and scored on
-the second — the way it actually deploys.
+the second the way it actually deploys.
 
 ```
 beat buy & hold on           2/33  =  6%     (no-skill baseline: 50%)
@@ -84,7 +84,7 @@ confirmation. (Desperate attempt by me tbh, was hoping for something interesting
 **4. Fundamentals.** Ruled out before building: yfinance provides ~1.8 years of
 quarterly data, roughly four usable rebalance points.
 
-**5. Cross-sectional momentum** — a structurally different hypothesis, since it
+**5. Cross-sectional momentum** a structurally different hypothesis, since it
 ranks stocks rather than timing them and is always fully invested. On 2016–2026
 it looked genuinely strong. Extended to 2000–2026 with nothing else changed:
 
@@ -93,7 +93,7 @@ it looked genuinely strong. Extended to 2000–2026 with nothing else changed:
 2010-2019    momentum 12.62%   benchmark 14.49%    -1.87%
 2020-2026    momentum 17.71%   benchmark 12.71%    +5.01%
 
-13 winning years out of 26 — a coin flip
+13 winning years out of 26 a coin flip
 ```
 
 The entire edge lived in one recent period. It was the decade, not the effect.
@@ -106,7 +106,7 @@ Daily-bar trend and mean-reversion rules on liquid US large-caps are the most
 studied, most arbitraged setup in finance.
 
 Meanwhile the strategies impose guaranteed costs. **Time out of the market
-forfeits the equity risk premium** — the market's upward drift is what generates
+forfeits the equity risk premium** the market's upward drift is what generates
 return, so every day in cash gives some of it up, on top of transaction costs
 and execution lag. Unless the signal is genuinely better than random, being out
 is pure cost. The persistence test says the signal is not better than random.
@@ -129,7 +129,7 @@ A negative result has limits too.
 ## What is in here
 
 ```
-backtest/       execution engine — next-open fills, transaction costs,
+backtest/       execution engine next-open fills, transaction costs,
                 fractional shares
 strategy/       six strategies, auto-selection, live Alpaca execution
 evaluation/     metrics, risk-free rate, trade analytics, account logging
@@ -161,7 +161,7 @@ pytest-free: each test_*.py runs standalone
 **A research paper writing up these findings.**
 
 The subject is not "I tried to beat the market." It is the gap between a
-backtest that shows 500% and a system that survives being checked — and how
+backtest that shows 500% and a system that survives being checked and how
 many separate errors, each individually plausible, have to be found before the
 difference becomes visible. 
 
