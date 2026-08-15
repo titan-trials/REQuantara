@@ -12,7 +12,8 @@ what actually happened to the money and why.
 ---
 
 ## Current State (as of Aug 14, 2026)
-- Versions 1-13 complete.
+- Versions 1-15 complete.
+- **Live strategies (Aug 14 2026, V15 engine): NVDA -> EMA Crossover, TSLA -> Logistic Regression, AAPL -> EMA Crossover, JPM -> SMA Crossover, IBM -> Logistic Regression.**
 - **⚠️ ALL BACKTEST NUMBERS PREDATING VERSION 13 ARE VOID.** Three separate Version 13
   changes moved every backtest figure: position size 0.50 → 1.0 in the backtest,
   fractional shares replacing whole-share flooring, and a stop loss that actually
@@ -416,6 +417,182 @@ $22,907.63 → correctly detected as 1.91x with $10,897.29 margin debt).
 **Once this has a few weeks of data it replaces reconstruction for: true live equity
 curve, true live max drawdown, true live Sharpe, real slippage measurement (CSV signal
 price vs actual fill price), and an automatic buy & hold benchmark.**
+
+---
+
+## Version 15 — Execution Realism, Price Cache, Live Model Fix (COMPLETE)
+
+Phase 1 of the post-audit plan. Three fixes to how the system models reality,
+plus a cache. **Every backtest figure changed again — the third invalidation.**
+
+### Fix 1 — The live model was trained on stale data (Phase 1.1)
+
+`generate_current_signal()` fetched 300 calendar days, which after
+`build_features().dropna()` left ~155 rows, then trained on the FIRST HALF:
+
+```
+live model:     ~77 rows, ending roughly 4 months before the prediction
+backtest model: ~1,100 rows
+```
+
+**They were not the same model, so no backtest result described live
+behaviour.** Now trains on all history from `START` up to yesterday and
+predicts today — the same order of magnitude as the backtest.
+
+Also fixed alongside it:
+- **Scaler leakage.** `fit_transform(X)` ran over the whole frame *including*
+  today's row, leaking today's feature values into the scaling parameters. Now
+  fitted on training rows only.
+- **`end=today` risked dropping today's bar.** yfinance treats `end` as
+  exclusive; now passes tomorrow.
+- **The last row's label is fabricated.** `build_target()` does
+  `(close.shift(-1) > close).astype(int)`. On the final row `shift(-1)` is NaN,
+  `NaN > close` is False, and `astype(int)` makes that **0** — not NaN. So it
+  survives `dropna()` looking like a real label. Harmless under the old 50/50
+  split (the last row was never in the training half); **fatal once training on
+  everything**, since it would teach "today goes down" on every single run.
+  Excluded via `.iloc[:-1]`, with a regression test.
+- **Signal failure returned `0`, which means SELL.** Any exception — bad data,
+  a crashed model — produced a SELL/HOLD signal that would liquidate a real
+  position. Now returns `None` and the ticker is skipped entirely: no order,
+  and no log row either (a row with `Signal 0` is indistinguishable from a real
+  decision downstream). **Third fail-open bug in the live path**, after
+  `get_pending_orders` and `get_position`. Same shape every time: an error
+  handler returning a value that means "nothing here" instead of "I don't know."
+
+### Fix 2 — Execution lag (Phase 1.2)
+
+The engine decided AND executed at the same close. Live cannot do that:
+
+```
+21:00 UTC   job reads today's close, submits a DAY market order
+04:00 ET    Alpaca releases it into the pre-market session
+09:33 ET    it fills, minutes after the next regular open
+```
+
+Confirmed by real fills on 2026-08-14 (submitted 08:00 UTC, filled 13:33 UTC).
+Now every decision — **including stop losses** — is made at a bar's close and
+executed at the next bar's **open**. Required adding `Open` to the loader and
+cache.
+
+**This is what made gap risk visible.** Regression test, sell decided at a
+close of 100 with an overnight gap to an open of 80:
+
+```
+same-bar (old): $10,000.00   <- loses nothing
+lagged   (new): $ 8,000.00
+```
+
+The old engine was *structurally incapable* of pricing an AAPL-style weekend
+gap: the stop triggered and exited at the identical price. 20% of equity the
+backtest never charged.
+
+### Fix 3 — Transaction costs (Phase 1.3)
+
+`TRANSACTION_COST_BPS = 5.0` per side (Alpaca is commission-free, so this
+stands in for spread and impact). Sizing divides by `(1 + cost_rate)` so the
+fee comes out of the intended notional rather than overdrawing at
+`position_size = 1.0`.
+
+**Costs are not cosmetic — they change which strategy gets SELECTED.** On a
+flat price series over 12 bars:
+
+```
+no costs:   holding and churning are IDENTICAL
+with costs: hold $9,990.01  vs  churn $9,890.61
+```
+
+A strategy flipping in and out every other day previously looked exactly as
+good as one that held.
+
+### Fix 4 — Local price cache
+
+15 yfinance downloads per run (~3,900/year) for bars fixed years ago. Every one
+a chance to fail, and a failed download inside a bare `except` is what produced
+AAPL's one-day strategy flips.
+
+Now cached per ticker in `data/cache/` (gitignored; preserved on Actions by
+`actions/cache`, since committing it would add a ~850KB blob daily). Wired into
+`load_data()` so all callers benefit unchanged.
+
+**The hard part is that yfinance history is not immutable** — Yahoo
+retroactively re-adjusts every prior bar on a split or dividend. The cache
+re-fetches the last 7 days on refresh and *compares* them to what is stored; on
+disagreement it rebuilds the whole file. Self-healing, no manual invalidation.
+
+Two bugs caught by testing rather than review:
+- **Range coverage alone was not enough.** A request already spanned by the
+  cache never re-checked, so a backtest-only run would serve pre-split prices
+  indefinitely. Now re-verifies once per ticker per day.
+- **A start date on a non-trading day defeated the cache entirely.** `START` is
+  2015-01-01 — New Year's Day. The first real bar is 2015-01-02, so
+  `2015-01-01 < 2015-01-02` was always true and every call decided it needed
+  earlier history. **The cache was a complete no-op for the auto_select path.**
+  Fixed by tracking the earliest *requested* start separately from the first
+  bar returned.
+
+### ✅ REGENERATED RESULTS — Aug 14 2026, Version 15 engine
+
+```
+Ticker  Best Strategy         Score   Sharpe  Return   MaxDD
+NVDA    EMA Crossover         1.7828  1.172   524.11%  -50.48%
+TSLA    Logistic Regression   1.4636  0.999   426.74%  -63.12%
+AAPL    EMA Crossover         1.0741  1.018   163.14%  -20.38%
+JPM     SMA Crossover         0.8384  0.846    91.65%  -22.64%
+IBM     Logistic Regression   0.4084  0.335    24.02%  -35.72%
+```
+
+**Three assignments changed** vs the V13 table: TSLA SMA → **LR**, AAPL LR →
+**EMA**, IBM Bollinger → **LR**.
+
+**Finding 1 — lag is not a uniform tax.** NVDA's return went *up* (495.83% →
+524.11%) despite paying costs. Filling at the next open rather than the same
+close is a different price series, not a haircut; it can help or hurt depending
+on the strategy and the trend.
+
+**Finding 2 — Bollinger Bands on IBM collapsed, and the reason is instructive.**
+It scored 0.8276 with a remarkable -6.49% drawdown under V13; it is not
+selected at all now. **Mean-reversion strategies were the largest beneficiaries
+of the same-bar execution bug.** Bollinger buys at the lower band — with
+same-bar fills you buy at the exact extreme close you just observed. In reality
+you buy at the next open, after the bounce has begun. Its apparent quality was
+substantially an artifact of execution that cannot happen. Worth checking
+whether the same applies to any other mean-reversion result in this document.
+
+**Finding 3 — IBM now has no working strategy.** Its best available scores
+**0.4084**, which is "failing" on this project's own scale (below 0.5). Under
+V13 its winner scored 0.8276. This matters because IBM was one of only two
+places the momentum override beat buy & hold, and the whole "edge appears on
+non-trending names" hypothesis leans on it.
+
+**Finding 4 — ML/rule-based comparison shifted in both directions**, not
+uniformly:
+
+```
+Ticker  LR (V13 -> V15)   RF (V13 -> V15)
+NVDA    0.911 -> 1.175    1.028 -> 1.139
+TSLA    0.822 -> 0.999    0.515 -> 0.446
+AAPL    1.168 -> 0.911    0.930 -> 0.716
+JPM    -0.397 -> 0.339    0.209 -> 0.268
+IBM     0.534 -> 0.335    0.433 -> 0.123
+```
+
+JPM's LR swung from -0.397 to +0.339. IBM's RF fell to 0.123. These moves are
+too large to be "costs shaved a bit off" — they reflect a genuinely different
+execution price series. **Do not treat any V13 comparison as still standing.**
+
+### ⚠️ STILL OUTSTANDING after Version 15
+
+- Buy & hold is **still not a candidate** in `auto_selector.py`. The Round 3
+  finding (B&H beats every LR/RF baseline on Sharpe) has not been acted on, and
+  none of these regenerated numbers are compared against simply holding.
+- The **momentum override results are void again** — they were produced on the
+  V13 engine with no lag and no costs. The override holds positions longer,
+  which costs *less* in transaction terms, so it may look better now for a
+  reason that has nothing to do with momentum.
+- **No rebalancing logic.** JPM sits at 44% of equity against a 20% target.
+
+---
 
 ### ✅ FIRST LIVE NQ RUN — Aug 14 2026 (the measurement layer works)
 
@@ -897,7 +1074,16 @@ python test_account_log.py               # 22 assertions on the Alpaca measureme
 python test_momentum_override.py         # 13 assertions on the override rule
 python test_trading_date.py              # 14 assertions on trading-date logging
 python test_alpaca_executor.py           # 20 assertions on the live order guards
-                                         # -- 94 assertions total, all network-free --
+python test_live_signal.py               # 17 assertions on live model training
+python test_cache.py                     # 24 assertions on the price cache
+python test_execution_model.py           # 13 assertions on lag + transaction costs
+                                         # -- 148 assertions total, all network-free --
+
+# One-command status check over results/ (no network, no Alpaca)
+python check_health.py
+
+# Inspect the price cache
+python -m data.cache
 
 # Walk-forward validation of the momentum override (needs network, ~few minutes)
 python override_walk_forward.py
@@ -1777,7 +1963,19 @@ logging.
   - First automated tests in the project: `test_engine_synthetic.py` (18 assertions),
     `test_auto_selector_fallback.py` (7 assertions), both network-free
   - All pre-V13 backtest figures invalidated and marked STALE
-### Version 15 (next) — Benchmark Correction
+### Version 15 ✅ — Execution Realism, Price Cache, Live Model Fix
+  - Live model now trains on all history to yesterday, not the first half of a
+    300-day window (~77 rows ending 4 months earlier)
+  - Scaler leakage fixed; fabricated last-row label excluded from training
+  - Signal-generation failure returns None instead of 0 (0 meant SELL)
+  - Execution lag: decisions at a close execute at the NEXT open, stop losses
+    included. Gap risk is finally visible
+  - Transaction costs (5 bps/side), which change strategy SELECTION not just
+    reported returns
+  - Local price cache with split/dividend self-healing; two cache bugs caught
+    by tests, one of which made it a complete no-op
+  - 145 assertions across 9 network-free suites
+### Version 16 (next) — Benchmark Correction
   - Make buy & hold the default benchmark in `get_metrics` output, the composite score,
     and the dashboard. It has always been computed and never shown
   - Add buy & hold as a scoreable candidate in `auto_selector.py`

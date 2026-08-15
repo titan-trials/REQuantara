@@ -50,6 +50,20 @@ jobs:
         run: |
           pip install -r requirements.txt
 
+      # Price history is cached in data/cache/ rather than committed. Committing
+      # it would add a fresh ~850KB blob to the repo on every daily run. A cache
+      # miss is not a failure - it just means one slow run that rebuilds it.
+      #
+      # The key rotates daily so the restore-keys prefix picks up yesterday's
+      # cache and the run only fetches the new bars on top of it.
+      - name: Restore price cache
+        uses: actions/cache@v4
+        with:
+          path: data/cache
+          key: quantara-prices-${{ github.run_id }}
+          restore-keys: |
+            quantara-prices-
+
       - name: Run paper trader
         env:
           ALPACA_KEY: ${{ secrets.ALPACA_KEY }}

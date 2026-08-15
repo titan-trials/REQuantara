@@ -42,5 +42,25 @@ STOP_LOSS = 0.05       # Exit if position drops 5% from entry
 BACKTEST_POSITION_SIZE = 1.0   # fraction of ONE ticker's own capital, single-ticker sim
 LIVE_POSITION_SIZE = 0.20      # fraction of TOTAL account equity, shared across 5 tickers
 
+# ---------------------------------------------------------------------------
+# EXECUTION REALISM (Version 15)
+#
+# TRANSACTION_COST_BPS: per-side cost in basis points. Alpaca charges no
+# commission, so this stands in for bid-ask spread and market impact. It is NOT
+# cosmetic: with zero costs the backtest silently favours high-turnover
+# strategies, so it biases which strategy the auto-selector PICKS, not just the
+# returns it reports. 5 bps (0.05%) per side is a conservative retail estimate
+# for liquid US large-caps.
+#
+# EXECUTION_LAG: 1 means a decision made at today's close executes at
+# tomorrow's open - which is what actually happens, since the job runs after
+# the close and DAY market orders queue for the next session. Confirmed by real
+# fills on 2026-08-14: submitted 08:00 UTC, filled 13:33 UTC (09:33 ET).
+# Setting 0 restores same-bar execution and is only for isolating accounting
+# behaviour in tests.
+# ---------------------------------------------------------------------------
+TRANSACTION_COST_BPS = 5.0
+EXECUTION_LAG = 1
+
 # Portfolio
 INITIAL_CAPITAL = 10000  # Starting with $10,000

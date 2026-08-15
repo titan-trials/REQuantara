@@ -1,40 +1,40 @@
 {
-  "generated_at": "2026-08-15 02:13:55",
+  "generated_at": "2026-08-14 20:06:27",
   "assignments": {
     "NVDA": {
       "Best_Strategy": "EMA Crossover",
-      "Score": 1.7169,
-      "Sharpe": 1.152,
-      "Total_Return": 495.83,
-      "Max_Drawdown": -50.25
+      "Score": 1.7828,
+      "Sharpe": 1.172,
+      "Total_Return": 524.11,
+      "Max_Drawdown": -50.48
     },
     "TSLA": {
-      "Best_Strategy": "SMA Crossover",
-      "Score": 1.4049,
-      "Sharpe": 0.964,
-      "Total_Return": 402.38,
-      "Max_Drawdown": -60.63
+      "Best_Strategy": "Logistic Regression",
+      "Score": 1.4636,
+      "Sharpe": 0.999,
+      "Total_Return": 426.74,
+      "Max_Drawdown": -63.12
     },
     "AAPL": {
-      "Best_Strategy": "Logistic Regression",
-      "Score": 1.2086,
-      "Sharpe": 1.168,
-      "Total_Return": 201.84,
-      "Max_Drawdown": -26.35
+      "Best_Strategy": "EMA Crossover",
+      "Score": 1.0741,
+      "Sharpe": 1.018,
+      "Total_Return": 163.14,
+      "Max_Drawdown": -20.38
     },
     "JPM": {
       "Best_Strategy": "SMA Crossover",
-      "Score": 0.8833,
-      "Sharpe": 0.9,
-      "Total_Return": 101.14,
-      "Max_Drawdown": -22.98
+      "Score": 0.8384,
+      "Sharpe": 0.846,
+      "Total_Return": 91.65,
+      "Max_Drawdown": -22.64
     },
     "IBM": {
-      "Best_Strategy": "Bollinger Bands",
-      "Score": 0.8276,
-      "Sharpe": 0.964,
-      "Total_Return": 32.56,
-      "Max_Drawdown": -6.49
+      "Best_Strategy": "Logistic Regression",
+      "Score": 0.4084,
+      "Sharpe": 0.335,
+      "Total_Return": 24.02,
+      "Max_Drawdown": -35.72
     }
   }
 }

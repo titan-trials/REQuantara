@@ -19,11 +19,25 @@ from strategy.alpaca_executor import get_client, execute_signal
 from evaluation.account_log import log_account_state
 
 
-def get_recent_data(ticker, lookback_days=300):
-    end = datetime.today().strftime("%Y-%m-%d")
-    start = (datetime.today() - timedelta(days=lookback_days)).strftime("%Y-%m-%d")
-    df = load_data(ticker, start, end)
-    return df
+def get_recent_data(ticker, start=None):
+    """Full price history from `start` through today, for live signal generation.
+
+    Was `lookback_days=300`. That gave ~205 trading days, and after
+    build_features().dropna() ate the indicator warm-up it left ~155 rows - of
+    which generate_current_signal() then trained on only the first half. The
+    live model was therefore fitted on ~77 days of data ending roughly four
+    months ago, while the backtest fitted on ~1,100 days. They were not the
+    same model, so backtest results said nothing about live behaviour.
+
+    `end` is set to TOMORROW deliberately. yfinance treats the end date as
+    exclusive, so passing today risks dropping today's bar - the one the signal
+    is supposed to be computed from.
+    """
+    from config import START
+
+    start = start or START
+    end = (datetime.today() + timedelta(days=1)).strftime("%Y-%m-%d")
+    return load_data(ticker, start, end)
 
 def get_trading_date(df):
     """The date of the last bar of market data, as YYYY-MM-DD.
@@ -66,6 +80,40 @@ def log_signals(signals, log_file="results/paper_trading_log.csv", trading_date=
     updated.to_csv(log_file, index=False)
     print(f"Signals logged to: {log_file}")
 
+def _split_for_live_prediction(df):
+    """Everything-but-today to train on, today's row to predict.
+
+    Returns (X_train, y_train, X_today).
+
+    TWO TRAPS, both easy to reintroduce:
+
+    1. NO HOLDOUT. The backtest trains on the first 50% and predicts the second
+       50% because it is MEASURING generalisation. Live prediction is not a
+       measurement - there is nothing to be honest about, and holding data back
+       just makes the model worse. Train on everything available.
+
+    2. THE LAST ROW'S LABEL IS FAKE. build_target() does
+       `(close.shift(-1) > close).astype(int)`. On the final row shift(-1) is
+       NaN, `NaN > close` is False, and astype(int) turns that into 0. So the
+       last row carries a fabricated label of 0 that survives dropna() and
+       would silently teach the model "today goes down" on every single run.
+       It must be excluded from training - which is what `.iloc[:-1]` is for.
+    """
+    df = build_features(df)
+    df = build_target(df)
+    df = df.dropna()
+
+    if len(df) < 100:
+        raise ValueError(
+            f"only {len(df)} usable rows after feature warm-up - "
+            "not enough history to train a live model"
+        )
+
+    X = df[FEATURE_COLS]
+    y = df["Target"]
+    return X.iloc[:-1], y.iloc[:-1], X.iloc[[-1]]
+
+
 def generate_current_signal(df, strategy_name, initial_capital, stop_loss, position_size):
     try:
         if strategy_name == "SMA Crossover":
@@ -93,37 +141,33 @@ def generate_current_signal(df, strategy_name, initial_capital, stop_loss, posit
             return int(df["Signal"].iloc[-1])
 
         elif strategy_name == "Logistic Regression":
-            df = build_features(df)
-            df = build_target(df)
-            df = df.dropna()
-            
-            X = df[FEATURE_COLS]
-            y = df["Target"]
+            X_train, y_train, X_today = _split_for_live_prediction(df)
 
-            midpoint = len(df) // 2
+            # Scaler fitted on TRAINING ROWS ONLY. It used to be
+            # fit_transform(X) over the whole frame including today's row,
+            # which leaks today's feature values into the scaling parameters.
             scaler = StandardScaler()
-            X_scaled = scaler.fit_transform(X)
-            model = LogisticRegression()
-            model.fit(X_scaled[:midpoint], y[:midpoint])
-            today_signal = model.predict(X_scaled[-1:])[0]
-            return int(today_signal)
+            X_train_scaled = scaler.fit_transform(X_train)
+            X_today_scaled = scaler.transform(X_today)
+
+            model = LogisticRegression(max_iter=1000)
+            model.fit(X_train_scaled, y_train)
+            return int(model.predict(X_today_scaled)[0])
 
         elif strategy_name == "Random Forest":
-            df = build_features(df)
-            df = build_target(df)
-            df = df.dropna()
-
-            X = df[FEATURE_COLS]
-            y = df["Target"]
-            midpoint = len(df) // 2
+            X_train, y_train, X_today = _split_for_live_prediction(df)
             model = RandomForestClassifier(n_estimators=100, random_state=42)
-            model.fit(X.iloc[:midpoint], y.iloc[:midpoint])
-            today_signal = model.predict(X.iloc[-1:])[0]
-            return int(today_signal)
+            model.fit(X_train, y_train)
+            return int(model.predict(X_today)[0])
+
+        raise ValueError(f"Unknown strategy: {strategy_name!r}")
 
     except Exception as e:
-        print(f"Signal generation failed: {e}")
-        return 0
+        # FAIL CLOSED. This used to `return 0`, and 0 means SELL/HOLD - so a
+        # crashed model would quietly liquidate a position. Returning None lets
+        # the caller skip the ticker entirely and trade nothing.
+        print(f"[{strategy_name}] Signal generation FAILED: {type(e).__name__}: {e}")
+        return None
 
 def run_paper_trader(tickers, start, end, initial_capital, stop_loss, position_size):
     print(f"\n{'='*50}")
@@ -143,8 +187,10 @@ def run_paper_trader(tickers, start, end, initial_capital, stop_loss, position_s
         best_strategy = selections.loc[ticker, "Best_Strategy"]
         print(f"Selected Strategy: {best_strategy}")
 
-        # Fetch recent real data
-        df_recent = get_recent_data(ticker)
+        # Full history from config START through today. The ML strategies train
+        # on all of it; the crossover strategies only look at the tail, so the
+        # extra history is harmless to them.
+        df_recent = get_recent_data(ticker, start=start)
 
         # Take the trading date from the first ticker that returns data. All
         # five share a market calendar, so any of them will do.
@@ -158,8 +204,16 @@ def run_paper_trader(tickers, start, end, initial_capital, stop_loss, position_s
                                         initial_capital, stop_loss, position_size)
 
         current_price = df_recent["Close"].squeeze().iloc[-1]
-        
         print(f"Current Price     : ${current_price:.2f}")
+
+        # None means signal generation failed. Do NOT trade, and do NOT write a
+        # row - a row with Signal 0 is indistinguishable from a real SELL/HOLD
+        # decision, and every downstream consumer would treat it as one.
+        if signal is None:
+            print(f"[{ticker}] No signal produced — skipping this ticker "
+                  f"entirely (no order, no log row)")
+            continue
+
         print(f"Today's Signal    : {'BUY' if signal == 1 else 'SELL/HOLD'}")
 
         # Execute on Alpaca
