@@ -1,2 +1,3 @@
 Timestamp,Date,Equity,LastEquity,DailyPnL,DailyPnLPct,Cash,BuyingPower,LongMarketValue,ShortMarketValue,PositionCount,GrossExposure,Leverage,MarginDebt
 2026-08-14 02:14:16,2026-08-14,12120.89,12013.92,106.97,0.8904,877.75,27840.21,11243.14,0.0,2,11243.14,0.9276,0.0
+2026-08-17 02:08:49,2026-08-17,12003.01,12120.62,-117.61,-0.9703,4288.89,36358.21,7714.12,0.0,2,7714.12,0.6427,0.0
